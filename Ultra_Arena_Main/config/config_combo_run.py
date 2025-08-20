@@ -21,7 +21,15 @@ combo_config = {
             "grp_textF_dSeek_dChat_para",
             "grp_textFirst_openai_gpt4_para"
         ]
-    },    
+    }, 
+    "combo_potential_top_4_strategies" : {
+        "strategy_groups" : [
+            "grp_textF_dSeek_dChat_para",
+            "grp_textF_google_gemini25_para",            
+            "grp_directF_google_gemini25_para",
+            "grp_imageF_google_gemini25_para",
+        ]
+    },   
     "combo_test_4_strategies" : {
         "strategy_groups" : [
             "grp_directF_google_gemini25_para",
