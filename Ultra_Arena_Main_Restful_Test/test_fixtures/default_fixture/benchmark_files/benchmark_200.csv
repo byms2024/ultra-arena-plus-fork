@@ -1,0 +1,201 @@
+file_path,INVOICE_NO,TOTAL_AMOUNT,INVOICE_ISSUE_DATE
+10_files/archive_documents/file_sample_1_usa_119570.pdf,INV-10012,"$1,699.48",26/3/2021
+10_files/archive_documents/file_sample_1_usa_563638.pdf,INV-10012,"$1,699.48",26/3/2021
+10_files/archive_documents/file_sample_1_usa_731139.pdf,INV-10012,"$1,699.48",26/3/2021
+10_files/backup_documents/file_sample_2_german_573824.pdf,123100401,"453,53 €",1. März 2024
+10_files/backup_documents/file_sample_2_german_891235.pdf,123100401,"453,53 €",1. März 2024
+10_files/combined_documents/file_sample_1_usa_136034.pdf,INV-10012,"$1,699.48",26/3/2021
+10_files/combined_documents/file_sample_1_usa_940286.pdf,INV-10012,"$1,699.48",26/3/2021
+10_files/german_documents/file_sample_2_german_292665.pdf,123100401,"453,53 €",1. März 2024
+10_files/performance_documents/file_sample_2_german_100817.pdf,123100401,"453,53 €",1. März 2024
+10_files/production_documents/file_sample_2_german_704779.pdf,123100401,"453,53 €",1. März 2024
+1_file/archive_documents/file_sample_1_usa_563638.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_115080.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_119570.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_163606.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_186484.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_214745.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_265023.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_426857.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_457233.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_482683.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_534803.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_563638.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_652609.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_691942.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_692994.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_694315.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_723567.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_731139.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_833382.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_980208.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/archive_documents/file_sample_1_usa_981089.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/backup_documents/file_sample_2_german_160006.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_300727.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_307350.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_373485.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_401248.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_529315.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_573824.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_617509.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_623419.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_654126.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_706263.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_734905.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_739251.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_740746.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_758044.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_759389.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_786128.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_797669.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_891235.pdf,123100401,"453,53 €",1. März 2024
+200_files/backup_documents/file_sample_2_german_959002.pdf,123100401,"453,53 €",1. März 2024
+200_files/combined_documents/file_sample_1_usa_136034.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_168550.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_215109.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_217500.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_240070.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_332157.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_413169.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_439852.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_512874.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_568733.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_568994.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_651818.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_710766.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_747369.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_841694.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_925675.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_937607.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_940286.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_960816.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/combined_documents/file_sample_1_usa_973417.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/german_documents/file_sample_2_german_157445.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_201032.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_203734.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_276506.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_292665.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_300372.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_305025.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_345968.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_416951.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_428189.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_465567.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_498591.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_502678.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_510926.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_540410.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_570689.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_771676.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_775308.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_798626.pdf,123100401,"453,53 €",1. März 2024
+200_files/german_documents/file_sample_2_german_979964.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_100817.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_166719.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_231774.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_360900.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_368503.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_424652.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_459631.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_501048.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_511951.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_609360.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_750936.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_755816.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_792748.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_809040.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_830047.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_840998.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_869396.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_950689.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_965295.pdf,123100401,"453,53 €",1. März 2024
+200_files/performance_documents/file_sample_2_german_991267.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_100798.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_150723.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_212265.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_251445.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_287881.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_370627.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_380156.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_407864.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_464351.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_541513.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_585071.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_590366.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_659661.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_679001.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_687471.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_704779.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_863876.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_884906.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_892160.pdf,123100401,"453,53 €",1. März 2024
+200_files/production_documents/file_sample_2_german_924153.pdf,123100401,"453,53 €",1. März 2024
+200_files/stress_test_documents/file_sample_1_usa_101393.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_148534.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_154602.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_172288.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_198680.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_281313.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_345132.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_352503.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_446346.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_497685.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_514711.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_538135.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_563434.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_570163.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_577223.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_588609.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_677911.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_740923.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_817363.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/stress_test_documents/file_sample_1_usa_928692.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/test_documents/file_sample_2_german_112315.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_125768.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_160905.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_229298.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_254386.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_258995.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_305619.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_340276.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_384939.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_442196.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_547957.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_615546.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_642997.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_700784.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_718687.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_725077.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_841993.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_878775.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_942402.pdf,123100401,"453,53 €",1. März 2024
+200_files/test_documents/file_sample_2_german_994156.pdf,123100401,"453,53 €",1. März 2024
+200_files/usa_documents/file_sample_1_usa_124337.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_209520.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_215823.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_245201.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_454597.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_463508.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_594518.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_596680.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_615607.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_622973.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_659918.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_666097.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_706753.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_757592.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_851804.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_877174.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_936285.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_947345.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_957066.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/usa_documents/file_sample_1_usa_970811.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_112722.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_142206.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_167766.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_216735.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_264236.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_308693.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_496735.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_528934.pdf,INV-10012,"$1,699.48",26/3/2021
+200_files/validation_documents/file_sample_1_usa_634805.pdf,INV-10012,"$1,699.48",26/3/2021
