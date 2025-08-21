@@ -22,11 +22,11 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Test async processing with configurable combo name and file directory')
     parser.add_argument('--combo-name', 
-                       default='combo_test_deepseek_strategies',
-                       help='Combo name to use (default: combo_test_deepseek_strategies)')
+                       default='combo_potential_top_4_strategies',
+                       help='Combo name to use (default: combo_potential_top_4_strategies)')
     parser.add_argument('--file-name',
-                       default='1_file',
-                       help='File directory name to use (default: 1_file)')
+                       default='2_files',
+                       help='File directory name to use (default: 2_files)')
     parser.add_argument('--poll-interval',
                        type=int,
                        default=5,
@@ -66,20 +66,11 @@ def main():
     print(f"⏰ Max Wait Time: {max_wait}s")
     print()
     
-    # Determine max_files_per_request based on file directory
-    max_files = 1  # Default for 1_file
-    if file_name == "2_files":
-        max_files = 2
-    elif file_name == "4_files":
-        max_files = 4
-    elif file_name == "10_files":
-        max_files = 10
-    elif file_name == "30_files":
-        max_files = 30
-    elif file_name == "200_files":
-        max_files = 200
+    MAX_NUM_FILES_PER_REQUEST = 10
+    MAX_CC_STRATEGIES = 5
+    MAX_CC_FILEGROUPS = 5
     
-    # Request data for async processing
+    # Request data with configurable combo name and file directory
     data = {
         'combo_name': combo_name,
         'input_pdf_dir_path': str(input_pdf_dir_path),
@@ -87,9 +78,9 @@ def main():
         'benchmark_file_path': str(benchmark_file_path),
         'run_type': 'evaluation',  # Benchmark evaluation mode
         'streaming': False,
-        'max_cc_strategies': 1,  # Single strategy
-        'max_cc_filegroups': 1,  # Single file group
-        'max_files_per_request': max_files  # Process files based on directory
+        'max_cc_strategies': MAX_CC_STRATEGIES,
+        'max_cc_filegroups': MAX_CC_FILEGROUPS,
+        'max_files_per_request': MAX_NUM_FILES_PER_REQUEST  # Process files based on directory
     }
     
     try:
@@ -146,7 +137,7 @@ def main():
                     if isinstance(progress, dict):
                         total_files = progress.get('total_files_of_all_strategies_to_process', 0)
                         processed_files = progress.get('total_files_of_all_strategies_processed', 0)
-                        if total_files > 0:
+                        if total_files and total_files > 0:
                             percentage = (processed_files / total_files) * 100
                             print(f"📊 Progress: {processed_files}/{total_files} files ({percentage:.1f}%)")
                     elif isinstance(progress, (int, float)):

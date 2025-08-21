@@ -34,34 +34,17 @@ class RequestProcessor:
         """
         Validate combo processing request before configuration assembly.
         
+        Note: This method is kept for backward compatibility but validation is now handled
+        by the RequestValidator in the server endpoints.
+        
         Args:
             data: The request data to validate
             
         Returns:
             Tuple[bool, str]: (is_valid, error_message)
         """
-        # Validate required fields
-        required_fields = ["combo_name", "input_pdf_dir_path", "output_dir"]
-        is_valid, error_msg = RequestValidator.validate_required_fields(data, required_fields)
-        if not is_valid:
-            return False, error_msg
-        
-        # Validate combo name exists
-        available_combos = self.config_manager.get_available_combos()
-        is_valid, error_msg = RequestValidator.validate_combo_name(data['combo_name'], available_combos)
-        if not is_valid:
-            return False, error_msg
-        
-        # Validate file paths
-        is_valid, error_msg = RequestValidator.validate_file_paths(data)
-        if not is_valid:
-            return False, error_msg
-        
-        # Validate evaluation mode requirements
-        if data.get('run_type') == 'evaluation':
-            if not data.get('benchmark_file_path'):
-                return False, "benchmark_file_path is required when run_type='evaluation'"
-        
+        # Validation is now handled by RequestValidator in server endpoints
+        # This method is kept for backward compatibility
         return True, None
     
     def create_unified_request_config(self, data: Dict[str, Any], use_default_combo: bool = False) -> Dict[str, Any]:

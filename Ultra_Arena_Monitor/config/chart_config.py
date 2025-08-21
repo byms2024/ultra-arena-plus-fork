@@ -26,7 +26,7 @@ except ImportError:
 # relative to the repository root (resolved from the monitor package root).
 # For the current repo, we have a consolidated JSON at Ultra_Arena_Test_Example/modular_results.json
 # JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/default_fixture/output_files/results/results_250819_152301_8ce01d31-f39c-42ea-b1da-53b4dbdcf323/json"
-JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files/results_250820_194146_93c65d1c-430e-4d52-8c19-780e4239d7bd/json"
+JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files/results_250821_004716_81a7bfcc-bcbd-4202-9f76-c2166affedd9/json"
 
 # NEW DIRECTORY STRUCTURE (as of latest update):
 # Results are now stored in timestamped directories: results_YYMMDD_HHmmss_[request_id]/

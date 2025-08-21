@@ -22,6 +22,20 @@ class StatisticsCalculator:
         successful_files = sum(stats.get('successful_files', 0) for stats in self.structured_output['group_stats'].values())
         failed_files = sum(stats.get('failed_files', 0) for stats in self.structured_output['group_stats'].values())
         
+        # Ensure values are integers to avoid None comparison issues
+        if total_files is None:
+            total_files = 0
+        else:
+            total_files = int(total_files)
+        if successful_files is None:
+            successful_files = 0
+        else:
+            successful_files = int(successful_files)
+        if failed_files is None:
+            failed_files = 0
+        else:
+            failed_files = int(failed_files)
+        
         # Calculate success rate
         success_rate = (successful_files / total_files * 100) if total_files > 0 else 0
         
@@ -49,18 +63,37 @@ class StatisticsCalculator:
         """Calculate retry-related statistics."""
         retry_stats = self.structured_output['retry_stats']
         
+        # Ensure retry stats values are integers to avoid None comparison issues
+        num_files_may_need_retry = retry_stats.get('num_files_may_need_retry', 0)
+        if num_files_may_need_retry is None:
+            num_files_may_need_retry = 0
+        else:
+            num_files_may_need_retry = int(num_files_may_need_retry)
+            
+        num_files_had_retry = retry_stats.get('num_files_had_retry', 0)
+        if num_files_had_retry is None:
+            num_files_had_retry = 0
+        else:
+            num_files_had_retry = int(num_files_had_retry)
+            
+        num_file_failed_after_max_retries = retry_stats.get('num_file_failed_after_max_retries', 0)
+        if num_file_failed_after_max_retries is None:
+            num_file_failed_after_max_retries = 0
+        else:
+            num_file_failed_after_max_retries = int(num_file_failed_after_max_retries)
+        
         # Calculate retry percentages
-        if retry_stats['num_files_may_need_retry'] > 0:
+        if num_files_may_need_retry > 0:
             retry_stats['percentage_files_had_retry'] = round(
-                (retry_stats['num_files_had_retry'] / retry_stats['num_files_may_need_retry']) * 100, 2
+                (num_files_had_retry / num_files_may_need_retry) * 100, 2
             )
         else:
             retry_stats['percentage_files_had_retry'] = 0.0
         
         # Calculate retry success rate
-        if retry_stats['num_files_had_retry'] > 0:
+        if num_files_had_retry > 0:
             retry_success_rate = round(
-                ((retry_stats['num_files_had_retry'] - retry_stats['num_file_failed_after_max_retries']) / retry_stats['num_files_had_retry']) * 100, 2
+                ((num_files_had_retry - num_file_failed_after_max_retries) / num_files_had_retry) * 100, 2
             )
         else:
             retry_success_rate = 0.0
@@ -76,8 +109,22 @@ class StatisticsCalculator:
         total_tokens = sum(stats.get('total_tokens', 0) for stats in self.structured_output['group_stats'].values())
         estimated_tokens = sum(stats.get('estimated_tokens', 0) for stats in self.structured_output['group_stats'].values())
         
+        # Ensure values are integers to avoid None comparison issues
+        if total_tokens is None:
+            total_tokens = 0
+        else:
+            total_tokens = int(total_tokens)
+        if estimated_tokens is None:
+            estimated_tokens = 0
+        else:
+            estimated_tokens = int(estimated_tokens)
+        
         # Add retry tokens
         retry_tokens = self.structured_output['retry_stats'].get('actual_tokens_for_retries', 0)
+        if retry_tokens is None:
+            retry_tokens = 0
+        else:
+            retry_tokens = int(retry_tokens)
         total_tokens += retry_tokens
         
         # Calculate token efficiency

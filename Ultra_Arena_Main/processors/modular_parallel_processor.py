@@ -1683,7 +1683,12 @@ class ModularParallelProcessor:
                 del self.structured_output['overall_stats']['total_actual_tokens']
             
             # Calculate total processed files from overall_stats
-            total_processed_files = self.structured_output['overall_stats'].get('total_files', 0)
+            total_processed_files = self.structured_output.get('overall_stats', {}).get('total_files', 0)
+            # Ensure it's an integer to avoid None comparison issues
+            if total_processed_files is None:
+                total_processed_files = 0
+            else:
+                total_processed_files = int(total_processed_files)
             
             # Add actual token totals to overall_stats (sum of all groups)
             # Use OrderedDict to maintain field order
@@ -1779,6 +1784,12 @@ class ModularParallelProcessor:
         # Get benchmark error statistics from BenchmarkTracker
         error_stats = self.benchmark_tracker.get_error_stats()
         total_files = self.structured_output.get('overall_stats', {}).get('total_files', 0)
+        # Ensure total_files is an integer to avoid None comparison issues
+        if total_files is None:
+            total_files = 0
+        else:
+            total_files = int(total_files)
+            
         total_unmatched_fields = error_stats.get('total_unmatched_fields', 0)
         total_unmatched_files = error_stats.get('total_unmatched_files', 0)
         

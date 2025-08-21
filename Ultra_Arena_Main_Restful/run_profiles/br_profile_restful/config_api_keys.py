@@ -1,6 +1,8 @@
 # API Keys Configuration for REST API component
 # This file contains API keys for LLM providers
+# 
 # IMPORTANT: Replace these placeholder values with your actual API keys
+# These are placeholder values to prevent accidental commit of real keys
 
 # Google Cloud Platform API Key
 GCP_API_KEY = "YOUR_GCP_API_KEY_HERE"
@@ -21,5 +23,4 @@ HUGGINGFACE_TOKEN = "YOUR_HUGGINGFACE_TOKEN_HERE"
 TOGETHERAI_API_KEY = "YOUR_TOGETHERAI_API_KEY_HERE"
 
 # XAI API Key
-XAI_API_KEY = "YOUR_XAI_API_KEY_HERE"  
-
+XAI_API_KEY = "YOUR_XAI_API_KEY_HERE"

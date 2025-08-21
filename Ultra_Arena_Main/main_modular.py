@@ -774,14 +774,19 @@ def run_combo_processing(benchmark_eval_mode: bool = False, combo_name: str = No
                         benchmark_file_path: Path = None) -> int:
     """Run combination processing using centralized configuration."""
     
-    # Always use _run_combo_processing_parallel - it handles both sequential and parallel
-    # Sequential processing is just a special case when max_cc_strategies = 1
-    if max_cc_strategies > 1:
-        logging.info(f"⚡⚡⚡ PARALLEL MODE ENABLED: Running combo '{combo_name or 'default'}' with up to {max_cc_strategies} strategies concurrently ⚡⚡⚡")
-    else:
-        logging.info(f"🔄 SEQUENTIAL MODE: Running combo '{combo_name or 'default'}' with up to {max_cc_strategies} strategy sequentially 🔄")
+    # Validate parameters using the new validator
+    from processors.parameter_validator import ParameterValidator
     
-    return _run_combo_processing_parallel(
+    # Get config defaults from config_base
+    config_defaults = {
+        'DEFAULT_MAX_CC_STRATEGIES': getattr(config_base, 'DEFAULT_MAX_CC_STRATEGIES', 3),
+        'DEFAULT_MAX_CC_FILEGROUPS': getattr(config_base, 'DEFAULT_MAX_CC_FILEGROUPS', 5),
+        'DEFAULT_MAX_FILES_PER_REQUEST': getattr(config_base, 'DEFAULT_MAX_FILES_PER_REQUEST', 10),
+        'OUTPUT_BASE_DIR': getattr(config_base, 'OUTPUT_BASE_DIR', './output')
+    }
+    
+    validator = ParameterValidator(config_defaults)
+    validation_result = validator.validate_run_combo_processing(
         benchmark_eval_mode=benchmark_eval_mode,
         combo_name=combo_name,
         streaming=streaming,
@@ -792,6 +797,34 @@ def run_combo_processing(benchmark_eval_mode: bool = False, combo_name: str = No
         pdf_file_paths=pdf_file_paths,
         output_dir=output_dir,
         benchmark_file_path=benchmark_file_path
+    )
+    
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        logging.error(f"❌ Parameter validation failed: {error_msg}")
+        raise ValueError(f"Parameter validation failed: {error_msg}")
+    
+    # Use validated parameters
+    validated_params = validation_result.validated_params
+    
+    # Always use _run_combo_processing_parallel - it handles both sequential and parallel
+    # Sequential processing is just a special case when max_cc_strategies = 1
+    if validated_params['max_cc_strategies'] > 1:
+        logging.info(f"⚡⚡⚡ PARALLEL MODE ENABLED: Running combo '{validated_params['combo_name'] or 'default'}' with up to {validated_params['max_cc_strategies']} strategies concurrently ⚡⚡⚡")
+    else:
+        logging.info(f"🔄 SEQUENTIAL MODE: Running combo '{validated_params['combo_name'] or 'default'}' with up to {validated_params['max_cc_strategies']} strategy sequentially 🔄")
+    
+    return _run_combo_processing_parallel(
+        benchmark_eval_mode=validated_params['benchmark_eval_mode'],
+        combo_name=validated_params['combo_name'],
+        streaming=validated_params['streaming'],
+        max_cc_strategies=validated_params['max_cc_strategies'],
+        max_cc_filegroups=validated_params['max_cc_filegroups'],
+        max_files_per_request=validated_params['max_files_per_request'],
+        input_pdf_dir_path=validated_params['input_pdf_dir_path'],
+        pdf_file_paths=validated_params['pdf_file_paths'],
+        output_dir=validated_params['output_dir'],
+        benchmark_file_path=validated_params['benchmark_file_path']
     )
 
 

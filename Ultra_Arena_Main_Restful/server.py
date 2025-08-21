@@ -120,9 +120,20 @@ def process_combo():
         
         with time_operation("http_request_parsing", "http_request_parsing"):
             data = request.get_json()
-            is_valid, error_msg = RequestValidator.validate_json_request(data)
-            if not is_valid:
-                return jsonify({"error": error_msg}), 400
+            if not data:
+                return jsonify({"error": "No JSON data provided"}), 400
+            
+            # Validate request using new validator
+            config_defaults = config_manager.get_config_defaults()
+            validator = RequestValidator(config_defaults)
+            validation_result = validator.validate_combo_request(data)
+            
+            if not validation_result.is_valid:
+                error_msg = "; ".join(validation_result.errors)
+                return jsonify({"error": f"Validation failed: {error_msg}"}), 400
+            
+            # Use validated parameters
+            data = validation_result.validated_params
         
         track_memory("after_request_parsing")
         
@@ -178,21 +189,32 @@ def process_combo_async():
         
         # Parse request data
         data = request.get_json()
-        is_valid, error_msg = RequestValidator.validate_json_request(data)
-        if not is_valid:
-            return jsonify({"error": error_msg}), 400
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Validate request using new validator
+        config_defaults = config_manager.get_config_defaults()
+        validator = RequestValidator(config_defaults)
+        validation_result = validator.validate_combo_request(data)
+        
+        if not validation_result.is_valid:
+            error_msg = "; ".join(validation_result.errors)
+            return jsonify({"error": f"Validation failed: {error_msg}"}), 400
+        
+        # Use validated parameters
+        validated_data = validation_result.validated_params
         
         # Create configuration
         try:
-            config = request_processor.create_unified_request_config(data, use_default_combo=False)
+            config = request_processor.create_unified_request_config(validated_data, use_default_combo=False)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         
         # Get request_id from config
         request_id = config.get("request_metadata", {}).get("request_id", "unknown")
         
-        # Create async task
-        task_manager.create_task(data, config_manager, request_id)
+        # Create async task with validated data
+        task_manager.create_task(validated_data, config_manager, request_id)
         
         # Format response
         response_data = request_processor.format_async_combo_response(request_id, config)
@@ -232,7 +254,7 @@ def get_request_status(request_id):
                 "completed_at": request_info["completed_at"],
                 "progress": request_info["progress"],
                 "total_files_of_all_strategies_to_process": request_info.get("total_files_of_all_strategies_to_process", 0),
-                "total_files_of_all_strategies_processed": request_info.get("total_files_of_all_strategies_processed", 0),
+                # "total_files_of_all_strategies_processed": request_info.get("total_files_of_all_strategies_processed", 0),
                 "performance": {
                     "configuration_assembly_time_ms": 45.2,  # This would come from actual processing
                     "server_config_cached": True
@@ -247,7 +269,7 @@ def get_request_status(request_id):
                 "created_at": request_info["created_at"],
                 "progress": request_info["progress"],
                 "total_files_of_all_strategies_to_process": request_info.get("total_files_of_all_strategies_to_process", 0),
-                "total_files_of_all_strategies_processed": request_info.get("total_files_of_all_strategies_processed", 0)
+                # "total_files_of_all_strategies_processed": request_info.get("total_files_of_all_strategies_processed", 0)
             }
         elif request_info["status"] == "failed":
             # Include error for failed requests
@@ -267,7 +289,7 @@ def get_request_status(request_id):
                 "created_at": request_info["created_at"],
                 "progress": request_info["progress"],
                 "total_files_of_all_strategies_to_process": request_info.get("total_files_of_all_strategies_to_process", 0),
-                "total_files_of_all_strategies_processed": request_info.get("total_files_of_all_strategies_processed", 0)
+                # "total_files_of_all_strategies_processed": request_info.get("total_files_of_all_strategies_processed", 0)
             }
         
         return jsonify(response_data)
