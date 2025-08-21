@@ -309,8 +309,9 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
     try:
         # Get configuration
         logging.info(f"📋 Getting configuration for strategy: {strategy_type}")
-        # Create temp_images directory within the output directory
-        temp_images_dir = str(Path(output_file).parent / "temp_images") if output_file else None
+        # Create temp_images directory as sibling to json/csv folders
+        # Use the base output directory (parent of json folder) for temp_images
+        temp_images_dir = str(Path(output_file).parent.parent / "temp_images") if output_file else None
         config = get_config_for_strategy(strategy_type, llm_provider=llm_provider, llm_model=llm_model, streaming=streaming, output_dir=temp_images_dir)
         logging.info(f"✅ Configuration loaded successfully")
         
