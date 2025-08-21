@@ -156,8 +156,8 @@ class AsyncTaskManager:
                     max_cc_strategies=request_data.get('max_cc_strategies', config_defaults.get('max_cc_strategies', 3)),
                     max_cc_filegroups=request_data.get('max_cc_filegroups', config_defaults.get('max_cc_filegroups', 5)),
                     max_files_per_request=request_data.get('max_files_per_request', config_defaults.get('max_files_per_request', 10)),
-                    input_pdf_dir_path=Path(request_data.get('input_pdf_dir_path')) if request_data.get('input_pdf_dir_path') else None,
-                    pdf_file_paths=[],
+                    input_pdf_dir_path=request_data.get('input_pdf_dir_path'),
+                    pdf_file_paths=request_data.get('pdf_file_paths', []),
                     output_dir=request_data.get('output_dir'),
                     benchmark_file_path=Path(request_data.get('benchmark_file_path')) if request_data.get('benchmark_file_path') else None
                 )

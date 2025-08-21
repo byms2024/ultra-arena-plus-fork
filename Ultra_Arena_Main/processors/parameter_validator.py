@@ -121,16 +121,29 @@ class ParameterValidator:
             validated_params['max_files_per_request'] = self.config_defaults.get('DEFAULT_MAX_FILES_PER_REQUEST', 10)
             param_sources['max_files_per_request'] = ParameterSource.CONFIG_DEFAULT
         
-        # Validate and track input_pdf_dir_path
-        if input_pdf_dir_path is not None:
+        # Handle input_pdf_dir_path vs pdf_file_paths mutual exclusivity with priority
+        if input_pdf_dir_path is not None and pdf_file_paths:
+            # Both provided - pdf_file_paths takes precedence
+            logger.info("🔄 Both input_pdf_dir_path and pdf_file_paths provided - using pdf_file_paths")
+            validated_params['input_pdf_dir_path'] = None
+            validated_params['pdf_file_paths'] = pdf_file_paths
+            param_sources['input_pdf_dir_path'] = ParameterSource.SYSTEM_DEFAULT
+            param_sources['pdf_file_paths'] = ParameterSource.FUNCTION_ARG
+        elif input_pdf_dir_path is not None:
+            # Only input_pdf_dir_path provided
             validated_params['input_pdf_dir_path'] = input_pdf_dir_path
+            validated_params['pdf_file_paths'] = []
             param_sources['input_pdf_dir_path'] = ParameterSource.FUNCTION_ARG
+            param_sources['pdf_file_paths'] = ParameterSource.SYSTEM_DEFAULT
+        elif pdf_file_paths:
+            # Only pdf_file_paths provided
+            validated_params['input_pdf_dir_path'] = None
+            validated_params['pdf_file_paths'] = pdf_file_paths
+            param_sources['input_pdf_dir_path'] = ParameterSource.SYSTEM_DEFAULT
+            param_sources['pdf_file_paths'] = ParameterSource.FUNCTION_ARG
         else:
-            errors.append("input_pdf_dir_path is required")
-        
-        # Validate and track pdf_file_paths
-        validated_params['pdf_file_paths'] = pdf_file_paths
-        param_sources['pdf_file_paths'] = ParameterSource.FUNCTION_ARG
+            # Neither provided
+            errors.append("Either input_pdf_dir_path or pdf_file_paths is required")
         
         # Validate and track output_dir
         if output_dir is not None:
@@ -336,12 +349,24 @@ class ParameterValidator:
                        errors: List[str]) -> tuple:
         """Validate file paths for combo processing."""
         
-        # Validate input_pdf_dir_path exists
+        # Validate based on what's actually being used
         input_path = validated_params.get('input_pdf_dir_path')
-        if input_path and not input_path.exists():
-            errors.append(f"Input directory does not exist: {input_path}")
-        elif input_path and not input_path.is_dir():
-            errors.append(f"Input path is not a directory: {input_path}")
+        pdf_paths = validated_params.get('pdf_file_paths', [])
+        
+        if input_path:
+            # Validate input_pdf_dir_path exists
+            if not input_path.exists():
+                errors.append(f"Input directory does not exist: {input_path}")
+            elif not input_path.is_dir():
+                errors.append(f"Input path is not a directory: {input_path}")
+        
+        if pdf_paths:
+            # Validate each PDF file exists
+            for pdf_path in pdf_paths:
+                if not pdf_path.exists():
+                    errors.append(f"PDF file does not exist: {pdf_path}")
+                elif not pdf_path.is_file():
+                    errors.append(f"Path is not a file: {pdf_path}")
         
         # Validate benchmark_file_path exists if provided
         benchmark_file_path = validated_params.get('benchmark_file_path')

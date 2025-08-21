@@ -491,18 +491,39 @@ def resolve_combo_processing_params(combo_name: str = None,
         # Get combo strategy groups from centralized config
         strategy_groups = injected_combo_config[combo_name]["strategy_groups"]
     
-    # Resolve input_pdf_dir_path
-    if input_pdf_dir_path is None:
-        raise ValueError("input_pdf_dir_path is required")
-    
-    # Validate input_pdf_dir_path exists
-    if not input_pdf_dir_path.exists():
-        raise ValueError(f"Input directory does not exist: {input_pdf_dir_path}")
-    
-    # Resolve pdf_file_paths (if empty, scan directory)
-    if not pdf_file_paths:
+    # Handle both scenarios with proper priority
+    if pdf_file_paths:
+        # Scenario 1: pdf_file_paths provided (takes precedence)
+        logging.info(f"🔄 Using provided pdf_file_paths: {len(pdf_file_paths)} files")
+        
+        # Validate each file exists
+        for pdf_path in pdf_file_paths:
+            if not pdf_path.exists():
+                raise ValueError(f"PDF file does not exist: {pdf_path}")
+            if not pdf_path.is_file():
+                raise ValueError(f"Path is not a file: {pdf_path}")
+        
+        # Extract input_pdf_dir_path from first file for compatibility
+        if pdf_file_paths:
+            input_pdf_dir_path = pdf_file_paths[0].parent
+            logging.info(f"📁 Extracted input_pdf_dir_path from pdf_file_paths: {input_pdf_dir_path}")
+        
+    elif input_pdf_dir_path is not None:
+        # Scenario 2: input_pdf_dir_path provided, convert to pdf_file_paths
+        logging.info(f"📁 Using input_pdf_dir_path: {input_pdf_dir_path}")
+        
+        if not input_pdf_dir_path.exists():
+            raise ValueError(f"Input directory does not exist: {input_pdf_dir_path}")
+        if not input_pdf_dir_path.is_dir():
+            raise ValueError(f"Input path is not a directory: {input_pdf_dir_path}")
+        
         pdf_files = get_pdf_files(str(input_pdf_dir_path))
         pdf_file_paths = [Path(f) for f in pdf_files]
+        logging.info(f"📄 Scanned {len(pdf_file_paths)} PDF files from directory")
+        
+    else:
+        # Scenario 3: Neither provided (should be caught by validator)
+        raise ValueError("Either input_pdf_dir_path or pdf_file_paths is required")
     
     # Resolve output_dir (use server profile default if not provided)
     if output_dir is None:

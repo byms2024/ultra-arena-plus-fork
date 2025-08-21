@@ -147,13 +147,31 @@ class RequestValidator:
             validated_params['combo_name'] = combo_name
             param_sources['combo_name'] = ParameterSource.REQUEST
         
-        # input_pdf_dir_path is required
+        # Handle input_pdf_dir_path vs pdf_file_paths mutual exclusivity
         input_path = request_data.get('input_pdf_dir_path')
-        if not input_path:
-            errors.append("Missing required parameter: input_pdf_dir_path")
+        pdf_paths = request_data.get('pdf_file_paths', [])
+        
+        if not input_path and not pdf_paths:
+            errors.append("Either input_pdf_dir_path or pdf_file_paths is required")
+        elif input_path and pdf_paths:
+            # Both provided - pdf_file_paths takes precedence
+            logger.info("🔄 Both input_pdf_dir_path and pdf_file_paths provided - using pdf_file_paths")
+            validated_params['input_pdf_dir_path'] = None
+            validated_params['pdf_file_paths'] = pdf_paths
+            param_sources['input_pdf_dir_path'] = ParameterSource.SYSTEM_DEFAULT
+            param_sources['pdf_file_paths'] = ParameterSource.REQUEST
         else:
-            validated_params['input_pdf_dir_path'] = input_path
-            param_sources['input_pdf_dir_path'] = ParameterSource.REQUEST
+            # Only one provided
+            if input_path:
+                validated_params['input_pdf_dir_path'] = input_path
+                validated_params['pdf_file_paths'] = []
+                param_sources['input_pdf_dir_path'] = ParameterSource.REQUEST
+                param_sources['pdf_file_paths'] = ParameterSource.SYSTEM_DEFAULT
+            else:
+                validated_params['input_pdf_dir_path'] = None
+                validated_params['pdf_file_paths'] = pdf_paths
+                param_sources['input_pdf_dir_path'] = ParameterSource.SYSTEM_DEFAULT
+                param_sources['pdf_file_paths'] = ParameterSource.REQUEST
         
         # output_dir is required
         output_dir = request_data.get('output_dir')
@@ -239,14 +257,26 @@ class RequestValidator:
                        validated_params: Dict[str, Any], param_sources: Dict[str, ParameterSource]) -> tuple:
         """Validate file paths."""
         
-        # Validate input_pdf_dir_path exists
+        # Validate based on what's actually being used
         input_path = validated_params.get('input_pdf_dir_path')
+        pdf_paths = validated_params.get('pdf_file_paths', [])
+        
         if input_path:
+            # Validate input_pdf_dir_path exists
             path = Path(input_path)
             if not path.exists():
                 errors.append(f"Input directory does not exist: {input_path}")
             elif not path.is_dir():
                 errors.append(f"Input path is not a directory: {input_path}")
+        
+        if pdf_paths:
+            # Validate each PDF file exists
+            for pdf_path in pdf_paths:
+                path = Path(pdf_path)
+                if not path.exists():
+                    errors.append(f"PDF file does not exist: {pdf_path}")
+                elif not path.is_file():
+                    errors.append(f"Path is not a file: {pdf_path}")
         
         # Validate benchmark_file_path exists if provided
         benchmark_file_path = validated_params.get('benchmark_file_path')
