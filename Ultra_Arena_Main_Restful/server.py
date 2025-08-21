@@ -176,47 +176,32 @@ def process_combo_async():
     try:
         logger.info(f"🚀 STARTING /api/process/combo/async request")
         
-        # Start performance monitoring
-        monitor = start_monitoring("REST_API_Process_Combo_Async")
-        track_memory("request_start")
+        # Parse request data
+        data = request.get_json()
+        is_valid, error_msg = RequestValidator.validate_json_request(data)
+        if not is_valid:
+            return jsonify({"error": error_msg}), 400
         
-        with time_operation("http_request_parsing", "http_request_parsing"):
-            data = request.get_json()
-            is_valid, error_msg = RequestValidator.validate_json_request(data)
-            if not is_valid:
-                return jsonify({"error": error_msg}), 400
+        # Create configuration
+        try:
+            config = request_processor.create_unified_request_config(data, use_default_combo=False)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         
-        track_memory("after_request_parsing")
+        # Get request_id from config
+        request_id = config.get("request_metadata", {}).get("request_id", "unknown")
         
-        with time_operation("configuration_setup", "configuration_setup"):
-            try:
-                config = request_processor.create_unified_request_config(data, use_default_combo=False)
-            except ValueError as e:
-                return jsonify({"error": str(e)}), 400
+        # Create async task
+        task_manager.create_task(data, config_manager, request_id)
         
-        track_memory("after_config_setup")
-        
-        with time_operation("async_task_creation", "async_task_creation"):
-            # Get request_id from config
-            request_id = config.get("request_metadata", {}).get("request_id", "unknown")
-            
-            # Create async task
-            task_manager.create_task(data, config_manager, request_id)
-        
-        track_memory("after_task_creation")
-        
-        with time_operation("response_formatting", "response_formatting"):
-            response_data = request_processor.format_async_combo_response(request_id, config)
-        
-        track_memory("request_end")
+        # Format response
+        response_data = request_processor.format_async_combo_response(request_id, config)
         
         return jsonify(response_data), 202
         
     except Exception as e:
         logger.error(f"❌ ERROR in /api/process/combo/async endpoint: {e}")
         return jsonify({"error": str(e)}), 500
-    finally:
-        end_monitoring()
 
 
 @app.route('/api/requests/<request_id>', methods=['GET'])

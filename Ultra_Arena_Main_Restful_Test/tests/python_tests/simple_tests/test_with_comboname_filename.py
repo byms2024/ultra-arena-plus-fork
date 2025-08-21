@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Simple Test: 4 Files with Configurable Combo Name
+Simple Test: Configurable Combo Name and File Directory
 
 This script tests any combo strategy against the REST endpoint
-with 4 files in evaluation mode using the br_fixture configuration.
-The combo_name can be specified as a command line argument.
+with configurable file directory in evaluation mode using the br_fixture configuration.
+Both combo_name and file_name can be specified as command line arguments.
 """
 
 import requests
@@ -15,27 +15,33 @@ import tempfile
 import argparse
 from pathlib import Path
 
+from Ultra_Arena_Main.config.config_base import MAX_NUM_FILES_PER_REQUEST
+
 def main():
-    """Run test with 4 files using specified combo name."""
+    """Run test with configurable combo name and file directory."""
     
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Test 4 files with configurable combo name')
+    parser = argparse.ArgumentParser(description='Test with configurable combo name and file directory')
     parser.add_argument('--combo-name', 
                        default='combo_test_deepseek_strategies',
                        help='Combo name to use (default: combo_test_deepseek_strategies)')
+    parser.add_argument('--file-name',
+                       default='1_file',
+                       help='File directory name to use (default: 1_file)')
     args = parser.parse_args()
     
     combo_name = args.combo_name
+    file_name = args.file_name
     
-    print(f"🚀 Ultra Arena Main - 4 Files Test with Combo: {combo_name}")
+    print(f"🚀 Ultra Arena Main - Test with Combo: {combo_name}, Files: {file_name}")
     print("=" * 75)
     
-    # Define paths for br_fixture with 4_files override
+    # Define paths for br_fixture with configurable file directory
     base_dir = Path(__file__).parent.parent.parent.parent
     fixture_dir = base_dir / "test_fixtures" / "br_fixture"
     
-    # Override INPUT_PDF_DIR_PATH to use 4_files directory
-    input_pdf_dir_path = fixture_dir / "input_files" / "4_files"
+    # Use configurable file directory
+    input_pdf_dir_path = fixture_dir / "input_files" / file_name
     benchmark_file_path = fixture_dir / "benchmark_files" / "benchmark_252.csv"
     
     # Use fixture's output directory
@@ -45,11 +51,15 @@ def main():
     print(f"📁 Output Directory: {output_dir}")
     print(f"📊 Benchmark File: {benchmark_file_path}")
     print(f"🎯 Combo Name: {combo_name}")
+    print(f"📄 File Directory: {file_name}")
     print(f"⚙️  Run Type: Evaluation")
-    print(f"📄 Files: 4 files (from 4_files directory)")
     print()
     
-    # Request data with configurable combo name
+    MAX_NUM_FILES_PER_REQUEST = 10
+    MAX_CC_STRATEGIES = 5
+    MAX_CC_FILEGROUPS = 5
+    
+    # Request data with configurable combo name and file directory
     data = {
         'combo_name': combo_name,
         'input_pdf_dir_path': str(input_pdf_dir_path),
@@ -57,9 +67,9 @@ def main():
         'benchmark_file_path': str(benchmark_file_path),
         'run_type': 'evaluation',  # Benchmark evaluation mode
         'streaming': False,
-        'max_cc_strategies': 1,  # Single strategy
-        'max_cc_filegroups': 1,  # Single file group
-        'max_files_per_request': 4  # Process all 4 files
+        'max_cc_strategies': MAX_CC_STRATEGIES,
+        'max_cc_filegroups': MAX_CC_FILEGROUPS,
+        'max_files_per_request': MAX_NUM_FILES_PER_REQUEST  # Process files based on directory
     }
     
     try:

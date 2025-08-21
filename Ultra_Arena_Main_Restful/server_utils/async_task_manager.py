@@ -60,18 +60,18 @@ class AsyncTaskManager:
         }
         
         with self.task_lock:
-            self.tasks[task_id] = task_info
+            self.tasks[request_id] = task_info
         
         # Start processing in background thread
         thread = threading.Thread(
             target=self._process_task,
-            args=(task_id, request_data, config_manager),
+            args=(request_id, request_data, config_manager),
             daemon=True
         )
         thread.start()
         
-        logger.info(f"🚀 Created async task {task_id} for combo: {request_data.get('combo_name')}")
-        return task_id
+        logger.info(f"🚀 Created async task {request_id} for combo: {request_data.get('combo_name')}")
+        return request_id
     
     def _process_task(self, request_id: str, request_data: Dict[str, Any], config_manager):
         """
@@ -91,7 +91,11 @@ class AsyncTaskManager:
             logger.info(f"🔄 Starting processing for request {request_id}")
             
             # Import the main processing module
-            from Ultra_Arena_Main.main_modular import main_modular_processing
+            import sys
+            import os
+            # Add the parent directory to the path to import Ultra_Arena_Main
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+            from Ultra_Arena_Main.main_modular import run_combo_processing
             
             # Get the actual configuration to calculate total work units
             try:
@@ -127,16 +131,14 @@ class AsyncTaskManager:
                 total_files_of_all_strategies_to_process = 0
             
             # Execute the processing
-            result_code = main_modular_processing(
+            result_code = run_combo_processing(
+                benchmark_eval_mode=request_data.get('run_type') == 'evaluation',
                 combo_name=request_data.get('combo_name'),
-                input_pdf_dir_path=request_data.get('input_pdf_dir_path'),
-                output_dir=request_data.get('output_dir'),
-                run_type=request_data.get('run_type', 'normal'),
                 streaming=request_data.get('streaming', False),
                 max_cc_strategies=request_data.get('max_cc_strategies'),
                 max_cc_filegroups=request_data.get('max_cc_filegroups'),
                 max_files_per_request=request_data.get('max_files_per_request'),
-                benchmark_file_path=request_data.get('benchmark_file_path')
+                benchmark_file_path=Path(request_data.get('benchmark_file_path')) if request_data.get('benchmark_file_path') else None
             )
             
             # Calculate final progress based on actual completion
@@ -150,7 +152,8 @@ class AsyncTaskManager:
                 self.tasks[request_id]["status"] = "complete" if progress >= 100 else "incomplete"
                 self.tasks[request_id]["progress"] = progress
                 self.tasks[request_id]["total_files_of_all_strategies_processed"] = total_files_of_all_strategies_processed
-                self.tasks[request_id]["result"] = result_code
+                # result_code is an integer, so we'll store it as a simple result
+                self.tasks[request_id]["result"] = {"return_code": result_code, "status": "success" if result_code == 0 else "error"}
                 self.tasks[request_id]["completed_at"] = datetime.utcnow().isoformat() + "Z"
             
             logger.info(f"✅ Request {request_id} completed successfully")
