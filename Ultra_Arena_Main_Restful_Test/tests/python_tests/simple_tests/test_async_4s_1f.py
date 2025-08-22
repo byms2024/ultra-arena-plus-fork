@@ -38,13 +38,22 @@ def main():
         print(f"❌ Error: Input directory not found: {input_pdf_dir_path}")
         sys.exit(1)
     
+    # Configuration constants
+    MAX_NUM_FILES_PER_REQUEST = 10
+    MAX_CC_STRATEGIES = 5
+    MAX_CC_FILEGROUPS = 5
+    
     # Prepare the request payload
     payload = {
         'combo_name': combo_name,
         'input_pdf_dir_path': str(input_pdf_dir_path),
         'run_type': 'evaluation',  # Benchmark evaluation mode
         'output_dir': str(test_fixtures_dir / "output_files"),
-        'benchmark_file_path': str(test_fixtures_dir / "benchmark_files" / "benchmark_252.csv")
+        'benchmark_file_path': str(test_fixtures_dir / "benchmark_files" / "benchmark_252.csv"),
+        'streaming': False,
+        'max_cc_strategies': MAX_CC_STRATEGIES,
+        'max_cc_filegroups': MAX_CC_FILEGROUPS,
+        'max_files_per_request': MAX_NUM_FILES_PER_REQUEST
     }
     
     print(f"📁 Input Directory: {input_pdf_dir_path}")
