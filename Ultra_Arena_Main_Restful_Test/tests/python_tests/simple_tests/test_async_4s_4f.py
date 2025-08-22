@@ -27,7 +27,7 @@ def main():
     
     # Configuration
     base_url = "http://localhost:5002"
-    api_endpoint = f"{base_url}/api/process_combo_async"
+    api_endpoint = f"{base_url}/api/process/combo/async"
     
     # Get the current script directory
     script_dir = Path(__file__).parent.parent.parent.parent
@@ -38,18 +38,27 @@ def main():
         print(f"❌ Error: Input directory not found: {input_pdf_dir_path}")
         sys.exit(1)
     
+    # Configuration constants
+    MAX_NUM_FILES_PER_REQUEST = 10
+    MAX_CC_STRATEGIES = 5
+    MAX_CC_FILEGROUPS = 5
+    
     # Prepare the request payload
     payload = {
         'combo_name': combo_name,
         'input_pdf_dir_path': str(input_pdf_dir_path),
         'run_type': 'evaluation',  # Benchmark evaluation mode
-        'output_dir_path': str(test_fixtures_dir / "output_files"),
-        'benchmark_file_path': str(test_fixtures_dir / "benchmark_files" / "benchmark_252.csv")
+        'output_dir': str(test_fixtures_dir / "output_files"),
+        'benchmark_file_path': str(test_fixtures_dir / "benchmark_files" / "benchmark_252.csv"),
+        'streaming': False,
+        'max_cc_strategies': MAX_CC_STRATEGIES,
+        'max_cc_filegroups': MAX_CC_FILEGROUPS,
+        'max_files_per_request': MAX_NUM_FILES_PER_REQUEST
     }
     
     print(f"📁 Input Directory: {input_pdf_dir_path}")
     print(f"📊 Benchmark File: {payload['benchmark_file_path']}")
-    print(f"📤 Output Directory: {payload['output_dir_path']}")
+    print(f"📤 Output Directory: {payload['output_dir']}")
     print()
     
     try:
@@ -59,11 +68,11 @@ def main():
         
         if response.status_code == 202:
             print("✅ Task submitted successfully!")
-            task_id = response.json().get('task_id')
-            print(f"📋 Task ID: {task_id}")
+            request_id = response.json().get('request_id')
+            print(f"📋 Request ID: {request_id}")
             
             # Poll for status updates
-            status_endpoint = f"{base_url}/api/task_status/{task_id}"
+            status_endpoint = f"{base_url}/api/requests/{request_id}"
             max_wait_time = 300  # 5 minutes
             poll_interval = 5    # 5 seconds
             elapsed_time = 0
@@ -79,17 +88,17 @@ def main():
                         
                         print(f"⏱️  Elapsed: {elapsed_time}s | Status: {status} | Progress: {progress}%")
                         
-                        if status == 'completed':
+                        if status == 'complete':
                             print("✅ Task completed successfully!")
-                            result = status_data.get('result', {})
-                            print(f"📊 Results: {json.dumps(result, indent=2)}")
+                            results = status_data.get('results', {})
+                            print(f"📊 Results: {json.dumps(results, indent=2)}")
                             break
                         elif status == 'failed':
                             print("❌ Task failed!")
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status == 'running':
+                        elif status == 'processing':
                             # Continue polling
                             pass
                         else:
@@ -98,7 +107,7 @@ def main():
                     else:
                         print(f"⚠️  Status check failed: {status_response.status_code}")
                         break
-                        
+                
                 except requests.exceptions.RequestException as e:
                     print(f"⚠️  Status check error: {e}")
                     break

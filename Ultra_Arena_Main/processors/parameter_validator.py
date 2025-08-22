@@ -355,25 +355,29 @@ class ParameterValidator:
         
         if input_path:
             # Validate input_pdf_dir_path exists
-            if not input_path.exists():
+            input_path_obj = Path(input_path) if isinstance(input_path, str) else input_path
+            if not input_path_obj.exists():
                 errors.append(f"Input directory does not exist: {input_path}")
-            elif not input_path.is_dir():
+            elif not input_path_obj.is_dir():
                 errors.append(f"Input path is not a directory: {input_path}")
         
         if pdf_paths:
             # Validate each PDF file exists
             for pdf_path in pdf_paths:
-                if not pdf_path.exists():
+                pdf_path_obj = Path(pdf_path) if isinstance(pdf_path, str) else pdf_path
+                if not pdf_path_obj.exists():
                     errors.append(f"PDF file does not exist: {pdf_path}")
-                elif not pdf_path.is_file():
+                elif not pdf_path_obj.is_file():
                     errors.append(f"Path is not a file: {pdf_path}")
         
         # Validate benchmark_file_path exists if provided
         benchmark_file_path = validated_params.get('benchmark_file_path')
-        if benchmark_file_path and not benchmark_file_path.exists():
-            errors.append(f"Benchmark file does not exist: {benchmark_file_path}")
-        elif benchmark_file_path and not benchmark_file_path.is_file():
-            errors.append(f"Benchmark path is not a file: {benchmark_file_path}")
+        if benchmark_file_path:
+            benchmark_path_obj = Path(benchmark_file_path) if isinstance(benchmark_file_path, str) else benchmark_file_path
+            if not benchmark_path_obj.exists():
+                errors.append(f"Benchmark file does not exist: {benchmark_file_path}")
+            elif not benchmark_path_obj.is_file():
+                errors.append(f"Benchmark path is not a file: {benchmark_file_path}")
         
         # Validate output_dir can be created
         output_dir = validated_params.get('output_dir')
@@ -393,10 +397,12 @@ class ParameterValidator:
         
         # Validate input_pdf_dir_path exists
         input_path = validated_params.get('input_pdf_dir_path')
-        if input_path and not input_path.exists():
-            errors.append(f"Input directory does not exist: {input_path}")
-        elif input_path and not input_path.is_dir():
-            errors.append(f"Input path is not a directory: {input_path}")
+        if input_path:
+            input_path_obj = Path(input_path) if isinstance(input_path, str) else input_path
+            if not input_path_obj.exists():
+                errors.append(f"Input directory does not exist: {input_path}")
+            elif not input_path_obj.is_dir():
+                errors.append(f"Input path is not a directory: {input_path}")
         
         # Validate output_file directory can be created
         output_file = validated_params.get('output_file')

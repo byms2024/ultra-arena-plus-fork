@@ -70,6 +70,10 @@ class RequestProcessor:
             
             # Generate request metadata for tracking
             try:
+                import sys
+                import os
+                # Add the parent directory to the path to import Ultra_Arena_Main
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
                 from Ultra_Arena_Main.common.request_id_generator import RequestIDGenerator
                 request_metadata = RequestIDGenerator.create_request_metadata()
                 logger.info(f"🔑 Generated request metadata: {request_metadata['request_id']}")

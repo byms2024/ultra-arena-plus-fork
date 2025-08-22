@@ -250,7 +250,8 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
                        checkpoint_file: str = "modular_checkpoint.pkl", 
                        llm_provider: str = None, llm_model: str = None,
                        csv_output_file: str = None, benchmark_eval_mode: bool = False,
-                       streaming: bool = False, max_files_per_request: int = None) -> Dict[str, Any]:
+                       streaming: bool = False, max_files_per_request: int = None,
+                       benchmark_file_path: Path = None) -> Dict[str, Any]:
     """
     Full-featured synchronous main entry point for batch processing using the modular system.
     
@@ -292,10 +293,11 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
     # Determine which files to process
     logging.info("🔍 Determining files to process...")
     if not pdf_file_paths:
-        if not input_pdf_dir_path.exists():
+        input_path_obj = Path(input_pdf_dir_path) if isinstance(input_pdf_dir_path, str) else input_pdf_dir_path
+        if not input_path_obj.exists():
             raise FileNotFoundError(f"The specified path '{input_pdf_dir_path}' does not exist.")
         # Get all PDFs in the directory and its subdirectories
-        pdf_file_paths = list(input_pdf_dir_path.rglob("*.pdf"))
+        pdf_file_paths = list(input_path_obj.rglob("*.pdf"))
         logging.info(f"Found {len(pdf_file_paths)} PDF files in directory and subdirectories")
     
     # Convert to string paths for processing
@@ -341,8 +343,13 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
         if benchmark_eval_mode:
             try:
                 from common.benchmark_comparator import BenchmarkComparator
-                benchmark_comparator = BenchmarkComparator()
-                logging.info(f"🔍 Benchmark comparison enabled")
+                logging.info(f"🔍 DEBUG: benchmark_file_path = {benchmark_file_path} (type: {type(benchmark_file_path)})")
+                if benchmark_file_path:
+                    benchmark_comparator = BenchmarkComparator(str(benchmark_file_path))
+                    logging.info(f"🔍 Benchmark comparison enabled with file: {benchmark_file_path}")
+                else:
+                    logging.warning(f"⚠️ Benchmark evaluation mode enabled but no benchmark file path provided")
+                    benchmark_comparator = None
             except Exception as e:
                 logging.error(f"❌ Failed to initialize benchmark comparator: {e}")
                 benchmark_comparator = None
@@ -392,7 +399,8 @@ def run_file_processing(*, input_pdf_dir_path: Path, pdf_file_paths: List[Path] 
                       checkpoint_file: str = DEFAULT_CHECKPOINT_FILE,
                       llm_provider: str = None, llm_model: str = None,
                       csv_output_file: str = None, benchmark_eval_mode: bool = False,
-                      streaming: bool = False, max_files_per_request: int = None) -> Dict[str, Any]:
+                      streaming: bool = False, max_files_per_request: int = None,
+                      benchmark_file_path: Path = None) -> Dict[str, Any]:
     """
     Simplified wrapper function for file processing with default values from config_base.py.
     
@@ -428,7 +436,8 @@ def run_file_processing(*, input_pdf_dir_path: Path, pdf_file_paths: List[Path] 
         csv_output_file=csv_output_file,
         benchmark_eval_mode=benchmark_eval_mode,
         streaming=streaming,
-        max_files_per_request=max_files_per_request
+        max_files_per_request=max_files_per_request,
+        benchmark_file_path=benchmark_file_path
     )
 
 
@@ -498,23 +507,26 @@ def resolve_combo_processing_params(combo_name: str = None,
         
         # Validate each file exists
         for pdf_path in pdf_file_paths:
-            if not pdf_path.exists():
+            pdf_path_obj = Path(pdf_path) if isinstance(pdf_path, str) else pdf_path
+            if not pdf_path_obj.exists():
                 raise ValueError(f"PDF file does not exist: {pdf_path}")
-            if not pdf_path.is_file():
+            if not pdf_path_obj.is_file():
                 raise ValueError(f"Path is not a file: {pdf_path}")
         
         # Extract input_pdf_dir_path from first file for compatibility
         if pdf_file_paths:
-            input_pdf_dir_path = pdf_file_paths[0].parent
+            first_file_path = Path(pdf_file_paths[0]) if isinstance(pdf_file_paths[0], str) else pdf_file_paths[0]
+            input_pdf_dir_path = first_file_path.parent
             logging.info(f"📁 Extracted input_pdf_dir_path from pdf_file_paths: {input_pdf_dir_path}")
         
     elif input_pdf_dir_path is not None:
         # Scenario 2: input_pdf_dir_path provided, convert to pdf_file_paths
         logging.info(f"📁 Using input_pdf_dir_path: {input_pdf_dir_path}")
         
-        if not input_pdf_dir_path.exists():
+        input_path_obj = Path(input_pdf_dir_path) if isinstance(input_pdf_dir_path, str) else input_pdf_dir_path
+        if not input_path_obj.exists():
             raise ValueError(f"Input directory does not exist: {input_pdf_dir_path}")
-        if not input_pdf_dir_path.is_dir():
+        if not input_path_obj.is_dir():
             raise ValueError(f"Input path is not a directory: {input_pdf_dir_path}")
         
         pdf_files = get_pdf_files(str(input_pdf_dir_path))
@@ -533,8 +545,10 @@ def resolve_combo_processing_params(combo_name: str = None,
     if benchmark_eval_mode and benchmark_file_path is None:
         raise ValueError("benchmark_file_path is required for evaluation runs")
     
-    if benchmark_file_path and not benchmark_file_path.exists():
-        raise ValueError(f"Benchmark file does not exist: {benchmark_file_path}")
+    if benchmark_file_path:
+        benchmark_path_obj = Path(benchmark_file_path) if isinstance(benchmark_file_path, str) else benchmark_file_path
+        if not benchmark_path_obj.exists():
+            raise ValueError(f"Benchmark file does not exist: {benchmark_file_path}")
     
     return {
         "strategy_groups": strategy_groups,
@@ -694,7 +708,8 @@ def _run_combo_processing_parallel(benchmark_eval_mode: bool = False, combo_name
                             max_cc_filegroups=max_cc_filegroups,
                             max_files_per_request=max_files_per_request,
                             json_filename=json_filename,
-                            csv_filename=csv_filename
+                            csv_filename=csv_filename,
+                            benchmark_file_path=benchmark_file_path
                         )
                         futures.append((group_name, future))
                     
@@ -740,7 +755,8 @@ def _process_single_strategy(group_name: str, group_params: Dict, combo_name: st
                            combo_json_dir: Path, combo_csv_dir: Path, input_files_path: str,
                            pdf_file_paths: List[Path], benchmark_eval_mode: bool, streaming: bool, 
                            max_cc_filegroups: int = 5, max_files_per_request: int = None,
-                           json_filename: str = None, csv_filename: str = None) -> Dict[str, Any]:
+                           json_filename: str = None, csv_filename: str = None,
+                           benchmark_file_path: Path = None) -> Dict[str, Any]:
     """Process a single strategy within a combo run."""
     logging.info(f"⚙️ Processing parameter group: {group_name}")
     logging.info(f"📋 Parameters: {group_params}")
@@ -780,7 +796,8 @@ def _process_single_strategy(group_name: str, group_params: Dict, combo_name: st
         csv_output_file=csv_output_file,
         benchmark_eval_mode=benchmark_eval_mode,
         streaming=streaming,
-        max_files_per_request=max_files_per_request
+        max_files_per_request=max_files_per_request,
+        benchmark_file_path=benchmark_file_path
     )
     
     return results

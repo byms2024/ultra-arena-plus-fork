@@ -26,8 +26,14 @@ except ImportError:
 # relative to the repository root (resolved from the monitor package root).
 # For the current repo, we have a consolidated JSON at Ultra_Arena_Test_Example/modular_results.json
 # JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/default_fixture/output_files/results/results_250819_152301_8ce01d31-f39c-42ea-b1da-53b4dbdcf323/json"
-JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files/results_250821_004716_81a7bfcc-bcbd-4202-9f76-c2166affedd9/json"
+JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files/results_250822_024947_8e1c6395-f3dd-4a20-ae78-2f2d07c27642/json"
 PARENT_JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files"
+
+# Track Latest Configuration
+# When enabled, automatically tracks the most recently modified results directory
+# When disabled, tracks the specific directory defined in JSON_DATA_DIR
+TRACK_LATEST_ENABLED = True  # Default to ON as requested
+CURRENT_JSON_DATA_DIR = None  # Dynamic directory path (set at runtime)
 
 # NEW DIRECTORY STRUCTURE (as of latest update):
 # Results are now stored in timestamped directories: results_YYMMDD_HHmmss_[request_id]/

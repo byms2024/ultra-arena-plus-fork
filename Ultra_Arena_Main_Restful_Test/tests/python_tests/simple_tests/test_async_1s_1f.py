@@ -17,7 +17,7 @@ def main():
     """Run async test with 1 strategy and 1 file."""
     
     # Hardcoded configuration for 1 strategy with 1 file
-    combo_name = "combo_potential_top_4_strategies"
+    combo_name = "single_strategy_text_first_google"
     file_name = "1_file"
     
     print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 1 File")

@@ -10,7 +10,7 @@ import logging
 
 # Add the parent directory to the path to import chart_config
 sys.path.append(str(Path(__file__).parent.parent))
-from config.chart_config import chart_config_all, CHARTS_PER_ROW, VAL_LEGEND_RIGHT_BIAS, MIN_BAR_HEIGHT, MAX_BAR_HEIGHT, JSON_DATA_DIR, REAL_TIME_MONITORING, UPDATE_FREQUENCY_SECONDS, FILE_WATCH_ENABLED
+from config.chart_config import chart_config_all, CHARTS_PER_ROW, VAL_LEGEND_RIGHT_BIAS, MIN_BAR_HEIGHT, MAX_BAR_HEIGHT, JSON_DATA_DIR, PARENT_JSON_DATA_DIR, TRACK_LATEST_ENABLED, CURRENT_JSON_DATA_DIR, REAL_TIME_MONITORING, UPDATE_FREQUENCY_SECONDS, FILE_WATCH_ENABLED
 
 app = Flask(__name__, static_folder='../frontend/static')
 
@@ -24,10 +24,53 @@ monitoring_active = False
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_latest_results_directory():
+    """Find the most recently modified results directory"""
+    try:
+        parent_dir = (Path(__file__).parent.parent / PARENT_JSON_DATA_DIR).resolve()
+        if not parent_dir.exists():
+            logger.warning(f"📁 Parent directory does not exist: {parent_dir}")
+            return None
+        
+        # Find all results directories
+        results_dirs = [d for d in parent_dir.iterdir() 
+                       if d.is_dir() and d.name.startswith('results_')]
+        
+        if not results_dirs:
+            logger.warning(f"📁 No results directories found in: {parent_dir}")
+            return None
+        
+        # Sort by modification time, get latest
+        latest_dir = max(results_dirs, key=lambda d: d.stat().st_mtime)
+        json_subdir = latest_dir / "json"
+        
+        if not json_subdir.exists():
+            logger.warning(f"📁 JSON subdirectory does not exist in latest results: {json_subdir}")
+            return None
+        
+        logger.info(f"📁 Found latest results directory: {latest_dir.name}")
+        return json_subdir
+        
+    except Exception as e:
+        logger.error(f"❌ Error finding latest results directory: {e}")
+        return None
+
 def get_json_directory():
-    """Get the JSON data directory path"""
-    # JSON_DATA_DIR is relative to the repository root monitor package parent
-    return (Path(__file__).parent.parent / JSON_DATA_DIR).resolve()
+    """Get the JSON data directory path - now supports dynamic switching"""
+    global CURRENT_JSON_DATA_DIR
+    
+    if TRACK_LATEST_ENABLED:
+        latest_dir = get_latest_results_directory()
+        if latest_dir and latest_dir.exists():
+            CURRENT_JSON_DATA_DIR = str(latest_dir)
+            return latest_dir
+        else:
+            logger.warning("📁 Latest directory not found, falling back to configured directory")
+    
+    # Fallback to configured directory
+    configured_dir = (Path(__file__).parent.parent / JSON_DATA_DIR).resolve()
+    CURRENT_JSON_DATA_DIR = str(configured_dir)
+    return configured_dir
 
 def get_file_modification_time(file_path):
     """Get the modification time of a file"""
@@ -253,6 +296,49 @@ def get_layout_config():
         "max_bar_height": MAX_BAR_HEIGHT
     })
 
+def clear_cache():
+    """Clear JSON cache and modification times when switching directories"""
+    global json_cache, last_modified_times
+    
+    with cache_lock:
+        json_cache.clear()
+        last_modified_times.clear()
+    
+    logger.info("🗑️ Cache cleared due to directory switch")
+
+@app.route('/api/track-latest', methods=['GET', 'POST'])
+def track_latest_config():
+    """Get or update track latest setting"""
+    global TRACK_LATEST_ENABLED
+    
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            new_state = data.get('enabled', True)
+            
+            if new_state != TRACK_LATEST_ENABLED:
+                TRACK_LATEST_ENABLED = new_state
+                # Clear cache when switching modes
+                clear_cache()
+                logger.info(f"🔄 Track latest setting changed to: {TRACK_LATEST_ENABLED}")
+            
+            return jsonify({
+                "status": "updated",
+                "enabled": TRACK_LATEST_ENABLED,
+                "current_directory": str(get_json_directory())
+            })
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating track latest setting: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    # GET request - return current status
+    return jsonify({
+        "enabled": TRACK_LATEST_ENABLED,
+        "current_directory": str(get_json_directory()),
+        "parent_directory": str((Path(__file__).parent.parent / PARENT_JSON_DATA_DIR).resolve())
+    })
+
 @app.route('/api/monitoring-status')
 def get_monitoring_status():
     """API endpoint to get real-time monitoring status"""
@@ -286,7 +372,9 @@ def get_monitoring_status():
         "last_check": datetime.now().isoformat(),
         "files_changed": has_files_changed(),
         "status_message": status_message,
-        "status_type": status_type
+        "status_type": status_type,
+        "track_latest_enabled": TRACK_LATEST_ENABLED,
+        "current_json_data_dir": CURRENT_JSON_DATA_DIR
     })
 
 @app.route('/api/monitoring-config', methods=['GET', 'POST'])

@@ -19,6 +19,7 @@ class ParameterSource(Enum):
     REQUEST = "request"
     PROFILE_DEFAULT = "profile_default"
     BASE_DEFAULT = "base_default"
+    NOT_SPECIFIED = "not_specified"
 
 
 @dataclass
@@ -164,13 +165,17 @@ class RequestValidator:
             # Only one provided
             if input_path:
                 validated_params['input_pdf_dir_path'] = input_path
-                validated_params['pdf_file_paths'] = []
+                # Get all PDFs in the directory and its subdirectories
+                input_path_obj = Path(input_path)
+                pdf_file_paths = list(input_path_obj.rglob("*.pdf"))
+                logging.info(f"Found {len(pdf_file_paths)} PDF files in directory and subdirectories")
+                validated_params['pdf_file_paths'] = [str(p) for p in pdf_file_paths]
                 param_sources['input_pdf_dir_path'] = ParameterSource.REQUEST
-                param_sources['pdf_file_paths'] = ParameterSource.SYSTEM_DEFAULT
+                param_sources['pdf_file_paths'] = ParameterSource.NOT_SPECIFIED
             else:
                 validated_params['input_pdf_dir_path'] = None
                 validated_params['pdf_file_paths'] = pdf_paths
-                param_sources['input_pdf_dir_path'] = ParameterSource.SYSTEM_DEFAULT
+                param_sources['input_pdf_dir_path'] = ParameterSource.NOT_SPECIFIED
                 param_sources['pdf_file_paths'] = ParameterSource.REQUEST
         
         # output_dir is required

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Simple Test: Asynchronous Combo Processing - 10 Strategies with 10 Files
+Simple Test: Asynchronous Combo Processing - 4 Strategies with 4 Files
 
 This script tests the asynchronous combo processing endpoint against the REST API
-with combo_test_10_strategies combo and 10_files directory in evaluation mode.
+with combo_potential_top_4_strategies combo and 4_files directory in evaluation mode.
 """
 
 import requests
@@ -14,13 +14,13 @@ import time
 from pathlib import Path
 
 def main():
-    """Run async test with 10 strategies and 10 files."""
+    """Run async test with 4 strategies and 4 files."""
     
-    # Hardcoded configuration for 10 strategies with 10 files
-    combo_name = "combo_test_10_strategies"
-    file_name = "10_files"
+    # Hardcoded configuration for 4 strategies with 4 files
+    combo_name = "combo_potential_top_4_strategies"
+    file_name = "1_file"
     
-    print(f"🚀 Ultra Arena Main - Async Test: 10 Strategies with 10 Files")
+    print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 4 Files")
     print(f"Combo: {combo_name}")
     print(f"Files: {file_name}")
     print("=" * 80)
@@ -59,11 +59,11 @@ def main():
         
         if response.status_code == 202:
             print("✅ Task submitted successfully!")
-            task_id = response.json().get('task_id')
-            print(f"📋 Task ID: {task_id}")
+            request_id = response.json().get('request_id')
+            print(f"📋 Request ID: {request_id}")
             
             # Poll for status updates
-            status_endpoint = f"{base_url}/api/task_status/{task_id}"
+            status_endpoint = f"{base_url}/api/requests/{request_id}"
             max_wait_time = 300  # 5 minutes
             poll_interval = 5    # 5 seconds
             elapsed_time = 0
@@ -79,17 +79,17 @@ def main():
                         
                         print(f"⏱️  Elapsed: {elapsed_time}s | Status: {status} | Progress: {progress}%")
                         
-                        if status == 'completed':
+                        if status == 'complete':
                             print("✅ Task completed successfully!")
-                            result = status_data.get('result', {})
-                            print(f"📊 Results: {json.dumps(result, indent=2)}")
+                            results = status_data.get('results', {})
+                            print(f"📊 Results: {json.dumps(results, indent=2)}")
                             break
                         elif status == 'failed':
                             print("❌ Task failed!")
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status == 'running':
+                        elif status == 'processing':
                             # Continue polling
                             pass
                         else:
@@ -98,7 +98,7 @@ def main():
                     else:
                         print(f"⚠️  Status check failed: {status_response.status_code}")
                         break
-                        
+                
                 except requests.exceptions.RequestException as e:
                     print(f"⚠️  Status check error: {e}")
                     break

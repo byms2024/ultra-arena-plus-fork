@@ -12,6 +12,10 @@ function Dashboard() {
     const [refreshInterval, setRefreshInterval] = useState(null);
     const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 });
     
+    // Track Latest state
+    const [trackLatest, setTrackLatest] = useState(true); // Default to ON as requested
+    const [currentDirectory, setCurrentDirectory] = useState(null);
+    
     // Animation and scaling state
     const [chartScales, setChartScales] = useState({});
     const [animationData, setAnimationData] = useState({});
@@ -318,9 +322,47 @@ function Dashboard() {
             if (response.ok) {
                 const status = await response.json();
                 setMonitoringStatus(status);
+                
+                // Update track latest state from server
+                if (status.track_latest_enabled !== undefined) {
+                    setTrackLatest(status.track_latest_enabled);
+                }
+                if (status.current_json_data_dir) {
+                    setCurrentDirectory(status.current_json_data_dir);
+                }
             }
         } catch (err) {
             console.error('Failed to fetch monitoring status:', err);
+        }
+    };
+
+    const toggleTrackLatest = async () => {
+        try {
+            const newState = !trackLatest;
+            const response = await fetch('/api/track-latest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: newState })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                setTrackLatest(newState);
+                if (result.current_directory) {
+                    setCurrentDirectory(result.current_directory);
+                }
+                
+                // Refresh data with new directory
+                await fetchInitialData();
+                await fetchFilesOnly();
+                await fetchMonitoringStatus();
+                
+                console.log('Track latest toggled:', newState ? 'ON' : 'OFF');
+            } else {
+                console.error('Failed to toggle track latest');
+            }
+        } catch (error) {
+            console.error('Failed to toggle track latest:', error);
         }
     };
 
@@ -706,6 +748,22 @@ function Dashboard() {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button 
                                 type="button"
+                                onClick={toggleTrackLatest}
+                                style={{
+                                    padding: '8px 16px',
+                                    backgroundColor: trackLatest ? '#17a2b8' : '#6c757d',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '5px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px'
+                                }}
+                            >
+                                {trackLatest ? '🎯 Track Latest ON' : '📁 Track Latest OFF'}
+                            </button>
+                            
+                            <button 
+                                type="button"
                                 onClick={(e) => toggleAutoRefresh(e)}
                                 style={{
                                     padding: '8px 16px',
@@ -774,7 +832,8 @@ function Dashboard() {
                             }}></div>
                             
                             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
-                                📂 Directory: {monitoringStatus.json_directory} | 
+                                📂 Directory: {currentDirectory || monitoringStatus.json_directory} | 
+                                {trackLatest ? ' 🎯 Tracking Latest' : ' 📁 Tracking Specific'} |
                                 {monitoringStatus.files_changed ? ' 🔄 Files changed' : ' ✅ No changes'} |
                                 {monitoringStatus.has_cached_data ? ' 💾 Using cached data' : ' 📭 No cached data'}
                             </div>

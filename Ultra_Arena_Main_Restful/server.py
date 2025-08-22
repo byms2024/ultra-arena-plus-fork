@@ -222,7 +222,9 @@ def process_combo_async():
         return jsonify(response_data), 202
         
     except Exception as e:
+        import traceback
         logger.error(f"❌ ERROR in /api/process/combo/async endpoint: {e}")
+        logger.error(f"❌ FULL STACK TRACE: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 

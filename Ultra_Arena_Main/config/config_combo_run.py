@@ -15,6 +15,12 @@ combo_config = {
             "grp_textFirst_openai_gpt4_para"
         ]
     },
+    "combo_2_text_first_strategies" : {
+        "strategy_groups" : [
+            "grp_textF_dSeek_dChat_para",
+            "grp_textF_google_gemini25_para"
+        ]
+    },
     "combo_test_3_strategies" : {
         "strategy_groups" : [
             "grp_directF_google_gemini25_para",
