@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Simple Test: Asynchronous Combo Processing - 1 Strategy with 1 File
+Simple Test: Asynchronous Combo Processing - 10 Strategies with 252 Files
 
 This script tests the asynchronous combo processing endpoint against the REST API
-with single_strategy_text_first_google combo and 1_file directory in evaluation mode.
+with combo_test_10_strategies combo and 200_files directory in evaluation mode.
+Note: Using 200_files directory as 252_files is not available.
 """
 
 import requests
@@ -14,15 +15,15 @@ import time
 from pathlib import Path
 
 def main():
-    """Run async test with 1 strategy and 1 file."""
+    """Run async test with 10 strategies and 252 files (using 200_files directory)."""
     
-    # Hardcoded configuration for 1 strategy with 1 file
-    combo_name = "single_strategy_text_first_google"
-    file_name = "1_file"
+    # Hardcoded configuration for 10 strategies with 252 files
+    combo_name = "test_textF_openai_only"
+    file_name = "200_files"  # Using 200_files as 252_files is not available
     
-    print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 1 File")
+    print(f"🚀 Ultra Arena Main - Async Test: 10 Strategies with 252 Files")
     print(f"Combo: {combo_name}")
-    print(f"Files: {file_name}")
+    print(f"Files: {file_name} (using 200_files directory)")
     print("=" * 80)
     
     # Configuration
@@ -68,13 +69,14 @@ def main():
         
         if response.status_code == 202:
             print("✅ Task submitted successfully!")
-            task_id = response.json().get('request_id')
-            print(f"📋 Task ID: {task_id}")
+            response_data = response.json()
+            request_id = response_data.get('request_id')
+            print(f"📋 Request ID: {request_id}")
             
             # Poll for status updates
-            status_endpoint = f"{base_url}/api/requests/{task_id}"
-            max_wait_time = 300  # 5 minutes
-            poll_interval = 5    # 5 seconds
+            status_endpoint = f"{base_url}/api/requests/{request_id}"
+            max_wait_time = 1800  # 30 minutes for large test
+            poll_interval = 10    # 10 seconds for large test
             elapsed_time = 0
             
             print("\n🔄 Polling for task completion...")
@@ -88,7 +90,7 @@ def main():
                         
                         print(f"⏱️  Elapsed: {elapsed_time}s | Status: {status} | Progress: {progress}%")
                         
-                        if status in ['complete', 'completed']:
+                        if status == 'complete' or status == 'completed':
                             print("✅ Task completed successfully!")
                             result = status_data.get('result', {})
                             print(f"📊 Results: {json.dumps(result, indent=2)}")
@@ -98,7 +100,7 @@ def main():
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status in ['running', 'processing', 'queued']:
+                        elif status == 'running' or status == 'processing':
                             # Continue polling
                             pass
                         else:

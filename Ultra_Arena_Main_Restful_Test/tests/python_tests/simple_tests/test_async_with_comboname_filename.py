@@ -33,7 +33,7 @@ def main():
                        help='Polling interval in seconds (default: 5)')
     parser.add_argument('--max-wait',
                        type=int,
-                       default=300,
+                       default=3000,
                        help='Maximum wait time in seconds (default: 300)')
     args = parser.parse_args()
     
@@ -66,9 +66,9 @@ def main():
     print(f"⏰ Max Wait Time: {max_wait}s")
     print()
     
-    MAX_NUM_FILES_PER_REQUEST = 10
+    MAX_NUM_FILES_PER_REQUEST = 1
     MAX_CC_STRATEGIES = 5
-    MAX_CC_FILEGROUPS = 5
+    MAX_CC_FILEGROUPS = 1
     
     # Request data with configurable combo name and file directory
     data = {

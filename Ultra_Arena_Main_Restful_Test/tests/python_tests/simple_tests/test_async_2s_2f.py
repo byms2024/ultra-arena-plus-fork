@@ -17,7 +17,8 @@ def main():
     """Run async test with combo1 and 2 files."""
     
     # Hardcoded configuration for combo1 with 2 files
-    combo_name = "combo1"
+    # combo_name = "combo1" 
+    combo_name = "test_both_strategies_openai"
     file_name = "2_files"
     
     print(f"🚀 Ultra Arena Main - Async Test: Combo1 with 2 Files")

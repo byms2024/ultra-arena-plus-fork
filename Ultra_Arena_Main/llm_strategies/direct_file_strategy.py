@@ -27,7 +27,7 @@ class DirectFileProcessingStrategy(BaseProcessingStrategy):
         self.provider_config = config.get("provider_configs", {}).get(self.llm_provider, {})
         
         # Initialize LLM client
-        self.llm_client = LLMClientFactory.create_client(self.llm_provider, self.provider_config)
+        self.llm_client = LLMClientFactory.create_client(self.llm_provider, self.provider_config, streaming=self.streaming)
         
         # Initialize token counter for accurate estimation
         self.token_counter = TokenCounter(self.llm_client, provider=self.llm_provider)

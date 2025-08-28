@@ -40,8 +40,8 @@ def main():
     
     # Configuration constants
     MAX_NUM_FILES_PER_REQUEST = 10
-    MAX_CC_STRATEGIES = 5
-    MAX_CC_FILEGROUPS = 5
+    MAX_CC_STRATEGIES = 3 # max num of strategy running in parallel
+    MAX_CC_FILEGROUPS = 5 # max num of requests sending to llm in parallel
     
     # Prepare the request payload
     payload = {
@@ -68,11 +68,12 @@ def main():
         
         if response.status_code == 202:
             print("✅ Task submitted successfully!")
-            task_id = response.json().get('task_id')
-            print(f"📋 Task ID: {task_id}")
+            response_data = response.json()
+            request_id = response_data.get('request_id')
+            print(f"📋 Request ID: {request_id}")
             
             # Poll for status updates
-            status_endpoint = f"{base_url}/api/task_status/{task_id}"
+            status_endpoint = f"{base_url}/api/requests/{request_id}"
             max_wait_time = 300  # 5 minutes
             poll_interval = 5    # 5 seconds
             elapsed_time = 0
@@ -88,7 +89,7 @@ def main():
                         
                         print(f"⏱️  Elapsed: {elapsed_time}s | Status: {status} | Progress: {progress}%")
                         
-                        if status == 'completed':
+                        if status in ['complete', 'completed']:
                             print("✅ Task completed successfully!")
                             result = status_data.get('result', {})
                             print(f"📊 Results: {json.dumps(result, indent=2)}")
@@ -98,7 +99,7 @@ def main():
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status == 'running':
+                        elif status in ['running', 'processing', 'queued']:
                             # Continue polling
                             pass
                         else:

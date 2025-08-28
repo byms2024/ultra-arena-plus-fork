@@ -303,6 +303,7 @@ class ModularParallelProcessor:
                     
                     # Save results incrementally
                     if self.real_time_save:
+                        logging.info(f"--- ✅ real_time_save: _process_groups_parallel() ---")
                         self._save_results_incrementally()
                     
                 except Exception as e:
@@ -334,6 +335,7 @@ class ModularParallelProcessor:
                 
                 # Save results incrementally
                 if self.real_time_save:
+                    logging.info(f"--- ✅ real_time_save: _process_groups_batch() ---")
                     self._save_results_incrementally()
                 
             except Exception as e:
@@ -399,7 +401,7 @@ class ModularParallelProcessor:
                         }
                     }
                     processed_results.append((file_path, processed_result))
-                    self.processed_files.add(file_path)
+                    self.processed_files.add(file_path)  # Add successful files
                 else:
                     # Get actual file size
                     try:
@@ -423,6 +425,7 @@ class ModularParallelProcessor:
                         }
                     }
                     processed_results.append((file_path, processed_result))
+                    self.processed_files.add(file_path)  # Add failed files too
             
             # Create group stats after token calculation
             group_stats = {
@@ -1305,6 +1308,7 @@ class ModularParallelProcessor:
                                         "file_size_mb": 0
                                     }
                                 }
+                                self.processed_files.add(file_path)  # Add files that are still in retry process
                                 logging.info(f"🔍 Debug: After retry, {file_path} group_ids_incl_retries: {existing_group_ids}")
                                 logging.warning(f"⚠️ {os.path.basename(file_path)} retry failed. Missing keys: {missing_keys}. Retries left: {max_retries - file_dict_for_retries[file_path]['retry_count']}")
                             else:
@@ -1350,6 +1354,7 @@ class ModularParallelProcessor:
                                 final_result['file_process_result']['group_ids_incl_retries'] = existing_group_ids
                                 
                                 self.structured_output['file_stats'][file_path] = final_result
+                                self.processed_files.add(file_path)  # Add failed files after max retries
                                 
                                 # Track files that failed after max retries (excluding 'Outros' documents)
                                 if result.get('DOC_TYPE') != 'Outros':
@@ -1400,7 +1405,8 @@ class ModularParallelProcessor:
             
             # Save results incrementally after each retry group
             if self.real_time_save:
-                self._save_results_incrementally(processed_group_results)
+                logging.info(f"--- ✅ real_time_save: retry ---")
+                self._save_results_incrementally()
             
             logging.info(f"✅ Retry group {group_index} (round {retry_round}) completed: {successful_files} successful, {failed_files} failed")
             
@@ -1611,12 +1617,6 @@ class ModularParallelProcessor:
                 total_estimated_tokens += group_data.get('estimated_tokens', 0)
                 total_group_wall_time_in_sec += group_data.get('group_proc_time_in_sec', 0)
                 total_actual_tokens += group_data.get('actual_tokens', 0)
-        
-        # Calculate token breakdown from individual file statistics (for group calculations)
-        total_prompt_tokens = 0
-        total_candidate_tokens = 0
-        total_other_tokens = 0
-        total_actual_tokens = 0
         
         # Sum up tokens from all individual files
         # We need to get tokens from the original LLM response results, not from processed file_stats

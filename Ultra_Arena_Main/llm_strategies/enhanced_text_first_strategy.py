@@ -27,7 +27,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         self.streaming = streaming
         self.llm_provider = config.get("llm_provider", "ollama")
         self.llm_config = config.get("provider_configs", {}).get(self.llm_provider, {})
-        self.llm_client = LLMClientFactory.create_client(self.llm_provider, self.llm_config)
+        self.llm_client = LLMClientFactory.create_client(self.llm_provider, self.llm_config, streaming=self.streaming)
         
         # Initialize token counter for accurate estimation
         self.token_counter = TokenCounter(self.llm_client, provider=self.llm_provider)
@@ -266,26 +266,34 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             # Single result, wrap in list
             file_results = [response]
         
-        # Map outputs to files using filename matching
+        # Map outputs to files using fuzzy matching
         results = []
         successful_count = 0
         failed_count = 0
         total_tokens = 0
         
-        for i, (file_path, result) in enumerate(zip(successful_files, file_results)):
-            if isinstance(result, dict):
-                # Check if the result has the correct filename
-                if "file_name_llm" in result and result["file_name_llm"] == original_filenames[i]:
-                    results.append((file_path, result))
-                    successful_count += 1
-                    if "total_token_count" in result:
-                        total_tokens += result["total_token_count"]
-                else:
-                    logging.warning(f"⚠️ Filename mismatch for {file_path}: expected {original_filenames[i]}, got {result.get('file_name_llm', 'None')}")
-                    results.append((file_path, result))
-                    failed_count += 1
+        # Use the existing OpenAIFileMappingStrategy for fuzzy matching
+        from processors.file_mapping_utils import FileMappingFactory
+        
+        # Create mapping strategy
+        mapping_strategy = FileMappingFactory.create_strategy("openai")
+        
+        # Map results to files using fuzzy matching
+        mapped_results = mapping_strategy.map_outputs_to_files(
+            file_results=file_results,
+            file_paths=successful_files,
+            group_index=group_index
+        )
+        
+        # Convert to the expected format
+        for file_path, result in mapped_results:
+            if "error" not in result:
+                results.append((file_path, result))
+                successful_count += 1
+                if "total_token_count" in result:
+                    total_tokens += result["total_token_count"]
             else:
-                results.append((file_path, {"error": "Invalid response format"}))
+                results.append((file_path, result))
                 failed_count += 1
         
         group_stats = {

@@ -44,20 +44,39 @@ combo_config = {
             "grp_test_imageF_claude_para"
         ]
     },
+    "combo_test_5_sub_strategies" : {
+        "strategy_groups" : [
+            "grp_test_imageF_claude_para",
+            "grp_test_textF_claude_para",
+            "grp_imageF_togetherai_llama_4_17b_para",
+            "grp_imageF_togetherai_llama_vision_90b_para",
+            "grp_imageF_grok_2_para"
+        ]
+    },  
     "combo_test_10_strategies" : {
         "strategy_groups" : [
             "grp_directF_google_gemini25_para",
             "grp_imageF_google_gemini25_para",
             "grp_textF_google_gemini25_para",
             # "grp_directF_dSeek_dChat_para", # WARNING - no support for direct pdf file
-            # "grp_imageF_dSeek_dChat_para", #    WARNING - Unsupported file type: temp_images/image_5eb95081.png
+            # "grp_imageF_dSeek_dChat_para", #    WARNING - "Unsupported file type: temp_images/image_5eb95081.png"
             "grp_textF_dSeek_dChat_para",  
+            # "grp_test_textF_openai_para", 
+            # "error": "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}"
+            # 2025-08-28 00:00:15,202 - [ThreadPoolExecutor-21_3][request] - DEBUG - Encountered httpx.HTTPStatusError
+            # 
+            # Traceback (most recent call last):
+            # File "/Users/jameswang9311/anaconda3/lib/python3.11/site-packages/openai/_base_client.py", line 1024, in request
+            #     response.raise_for_status()
+            # File "/Users/jameswang9311/anaconda3/lib/python3.11/site-packages/httpx/_models.py", line 829, in raise_for_status
+            #     raise HTTPStatusError(message, request=request, response=self)
+            # httpx.HTTPStatusError: Client error '429 Too Many Requests' for url 'https://api.openai.com/v1/chat/completions'
             "grp_test_imageF_openai_para",
             "grp_test_imageF_claude_para",
             "grp_test_textF_claude_para",
-            "grp_imageF_togetherai_llama_4_17b_para",
-            "grp_imageF_togetherai_llama_vision_90b_para",
-            "grp_imageF_grok_2_para"
+            # "grp_imageF_togetherai_llama_4_17b_para", # PROBLEM: togetherai error: "Only one image_url per content array is supported" 
+            # "grp_imageF_togetherai_llama_vision_90b_para", # PROBLEM: togetherai error: "Only one image_url per content array is supported" 
+            # "grp_imageF_grok_2_para" # no point, obviously over-expensive
         ]
     },    
  
@@ -85,9 +104,9 @@ combo_config = {
             "grp_textF_dSeek_dChat_para",        # text_first + DeepSeek  
             "grp_test_textF_claude_para",         # image_first + Claude
             "grp_textF_togetherai_llama_4_17b_para",
-            "grp_textF_togetherai_llama_vision_90b_para",
-            "grp_textF_togetherai_qwen_vl_72b_para",
-            "grp_textF_grok_4_para",
+            # "grp_textF_togetherai_llama_vision_90b_para",
+            # "grp_textF_togetherai_qwen_vl_72b_para",
+            # "grp_textF_grok_4_para", # not configured in the TEXT_PROVIDER in the base config
             "grp_textF_grok_2_para",
         ]
     },
@@ -209,6 +228,11 @@ combo_config = {
             "grp_imageF_huggingface_dotocr_para"
         ]
     },
+    "single_test_textF_openai" : {
+        "strategy_groups" : [
+            "grp_test_textF_openai_para"
+        ]
+    },    
     "single_test_textF_ollama" : {
         "strategy_groups" : [
             "grp_textF_ollama_deepseek_r1_8b_para"

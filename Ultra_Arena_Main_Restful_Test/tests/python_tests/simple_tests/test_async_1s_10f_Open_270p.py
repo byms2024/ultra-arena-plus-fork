@@ -17,8 +17,8 @@ def main():
     """Run async test with 1 strategy and 1 file."""
     
     # Hardcoded configuration for 1 strategy with 1 file
-    combo_name = "single_strategy_text_first_google"
-    file_name = "1_file"
+    combo_name = "test_textF_openai_only"
+    file_name = "10_files"
     
     print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 1 File")
     print(f"Combo: {combo_name}")
@@ -39,9 +39,9 @@ def main():
         sys.exit(1)
     
     # Configuration constants
-    MAX_NUM_FILES_PER_REQUEST = 10
+    MAX_NUM_FILES_PER_REQUEST = 2
     MAX_CC_STRATEGIES = 5
-    MAX_CC_FILEGROUPS = 5
+    MAX_CC_FILEGROUPS = 2
     
     # Prepare the request payload
     payload = {
@@ -88,7 +88,7 @@ def main():
                         
                         print(f"⏱️  Elapsed: {elapsed_time}s | Status: {status} | Progress: {progress}%")
                         
-                        if status in ['complete', 'completed']:
+                        if status == 'complete' or status == 'completed':
                             print("✅ Task completed successfully!")
                             result = status_data.get('result', {})
                             print(f"📊 Results: {json.dumps(result, indent=2)}")
@@ -98,7 +98,7 @@ def main():
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status in ['running', 'processing', 'queued']:
+                        elif status == 'running' or status == 'processing':
                             # Continue polling
                             pass
                         else:

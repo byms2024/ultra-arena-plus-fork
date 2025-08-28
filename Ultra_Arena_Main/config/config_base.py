@@ -100,6 +100,8 @@ TOGETHERAI_API_KEY = ""  # Will be set after imports
 TOGETHERAI_MODEL_ID_LLAMA_VISION_90B = "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo"
 # TOGETHERAI_MODEL_ID_QWEN2_VL_72B = "Qwen/Qwen2.5-VL-72B-Instruct" # too slow - 196s for 1 file with no accuracy
 TOGETHERAI_MODEL_ID_LLAMA_4_17b = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+TOGETHERAI_MODEL_ID_LLAMA_3_70b = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+
 TOGETHERAI_MODEL_TEMPERATURE = 0.1
 
 # Grok Configuration  # https://docs.x.ai/docs/models 
@@ -280,7 +282,21 @@ TEXT_PROVIDER_CONFIGS = {
         "temperature": CLAUDE_MODEL_TEMPERATURE,
         "max_tokens": 10000,
         "timeout": 60
-    }
+    },
+    "grok": {
+        "api_key": XAI_API_KEY,
+        "model": GROK_MODEL_ID_GROK_2,
+        "temperature": GROK_MODEL_TEMPERATURE,
+        "max_tokens": 4000,
+        "timeout": 60
+    },
+    "togetherai": {
+        "api_key": TOGETHERAI_API_KEY,
+        "model": TOGETHERAI_MODEL_ID_LLAMA_4_17b,
+        "temperature": TOGETHERAI_MODEL_TEMPERATURE,
+        "max_tokens": 4000,
+        "timeout": 60
+    },
 }
 
 # ============================================================================

@@ -93,8 +93,8 @@ class DeepSeekClient(BaseLLMClient):
                             continue
                         
                         file_content += text_content + f"\n=== END FILE: {os.path.basename(file_path)} ===\n"
-                        logging.info(f"✅ File content extracted: {os.path.basename(file_path)} ({len(text_content)} chars)")
-                        logging.info(f"📄 File content preview: {text_content[:200]}{'...' if len(text_content) > 200 else ''}")
+                        logging.debug(f"✅ File content extracted: {os.path.basename(file_path)} ({len(text_content)} chars)")
+                        logging.debug(f"📄 File content preview: {text_content[:200]}{'...' if len(text_content) > 200 else ''}")
                     except ImportError:
                         logging.warning("PyPDF2 not available, using placeholder content")
                         file_content += f"PyPDF2 not installed, content would be extracted here\n=== END FILE: {os.path.basename(file_path)} ===\n"
@@ -121,21 +121,21 @@ class DeepSeekClient(BaseLLMClient):
             for i, message in enumerate(messages):
                 role = message.get('role', 'unknown')
                 content = message.get('content', '')
-                logging.info(f"  Message {i+1} ({role}):")
-                logging.info(f"    Content length: {len(content)} chars")
+                logging.debug(f"  Message {i+1} ({role}):")
+                logging.debug(f"    Content length: {len(content)} chars")
                 if role == 'system':
-                    logging.info(f"    System prompt: {content[:200]}{'...' if len(content) > 200 else ''}")
+                    logging.debug(f"    System prompt: {content[:200]}{'...' if len(content) > 200 else ''}")
                 elif role == 'user':
                     # Show the beginning and end of user prompt
                     if len(content) > 400:
-                        logging.info(f"    User prompt (first 200 chars): {content[:200]}...")
-                        logging.info(f"    User prompt (last 200 chars): ...{content[-200:]}")
+                        logging.debug(f"    User prompt (first 200 chars): {content[:200]}...")
+                        logging.debug(f"    User prompt (last 200 chars): ...{content[-200:]}")
                     else:
-                        logging.info(f"    User prompt: {content}")
+                        logging.debug(f"    User prompt: {content}")
             
             # Log the complete messages for debugging
             messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
-            logging.info(f"  Complete messages JSON: {messages_json}")
+            logging.debug(f"  Complete messages JSON: {messages_json}")
             
             response = self.client.chat.completions.create(
                 model=self.model_id,
@@ -150,16 +150,16 @@ class DeepSeekClient(BaseLLMClient):
             
             # Log the complete response from DeepSeek
             logging.info("🔍 DEEPSEEK RESPONSE:")
-            logging.info(f"  Response Object: {response}")
-            logging.info(f"  Response Type: {type(response)}")
-            logging.info(f"  Response Attributes: {dir(response)}")
+            logging.debug(f"  Response Object: {response}")
+            logging.debug(f"  Response Type: {type(response)}")
+            logging.debug(f"  Response Attributes: {dir(response)}")
             
             if hasattr(response, 'choices') and response.choices:
                 logging.info(f"  Choices Count: {len(response.choices)}")
                 for i, choice in enumerate(response.choices):
-                    logging.info(f"  Choice {i}: {choice}")
+                    logging.debug(f"  Choice {i}: {choice}")
                     if hasattr(choice, 'message'):
-                        logging.info(f"  Choice {i} Message: {choice.message}")
+                        logging.debug(f"  Choice {i} Message: {choice.message}")
                         if hasattr(choice.message, 'content'):
                             # Truncate content to prevent large log files
                             content = choice.message.content

@@ -361,10 +361,13 @@ class OpenAIStyledStreamingClient(BaseLLMClient):
                 logging.error(f"Unexpected response type: {type(response)}")
                 return {"error": f"Unexpected response type: {type(response)}"}
             
-            # Handle OpenAI's response for multi-parts request format with "results" key
+            # Handle OpenAI's response for multi-parts request format with "results" or "result" key
             if isinstance(parsed, dict) and "results" in parsed and isinstance(parsed["results"], list):
                 logging.info(f"🔍 Detected OpenAI batch response with {len(parsed['results'])} results")
                 return parsed["results"]
+            elif isinstance(parsed, dict) and "result" in parsed and isinstance(parsed["result"], list):
+                logging.info(f"🔍 Detected OpenAI batch response with {len(parsed['result'])} results")
+                return parsed["result"]
             
             return parsed
         except json.JSONDecodeError as e:

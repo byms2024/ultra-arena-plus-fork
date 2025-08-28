@@ -128,10 +128,13 @@ class BaseClientMixin:
                 logging.error(f"Unexpected response type: {type(response)}")
                 return {"error": f"Unexpected response type: {type(response)}"}
             
-            # Handle batch response format with "results" key
+            # Handle batch response format with "results" or "result" key
             if isinstance(parsed, dict) and "results" in parsed and isinstance(parsed["results"], list):
                 logging.info(f"🔍 Detected {self.provider_name} batch response with {len(parsed['results'])} results")
                 return parsed["results"]
+            elif isinstance(parsed, dict) and "result" in parsed and isinstance(parsed["result"], list):
+                logging.info(f"🔍 Detected {self.provider_name} batch response with {len(parsed['result'])} results")
+                return parsed["result"]
             
             return parsed
         except json.JSONDecodeError as e:

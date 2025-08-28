@@ -58,7 +58,7 @@ def main():
     
     print(f"📁 Input Directory: {input_pdf_dir_path}")
     print(f"📊 Benchmark File: {payload['benchmark_file_path']}")
-    print(f"📤 Output Directory: {payload['output_dir_path']}")
+    print(f"📤 Output Directory: {payload['output_dir']}")
     print()
     
     try:
@@ -68,12 +68,14 @@ def main():
         
         if response.status_code == 202:
             print("✅ Task submitted successfully!")
-            task_id = response.json().get('task_id')
-            print(f"📋 Task ID: {task_id}")
+            response_data = response.json()
+            print(f"📋 Full Response: {response_data}")
+            request_id = response_data.get('request_id')
+            print(f"📋 Request ID: {request_id}")
             
             # Poll for status updates
-            status_endpoint = f"{base_url}/api/task_status/{task_id}"
-            max_wait_time = 300  # 5 minutes
+            status_endpoint = f"{base_url}/api/requests/{request_id}"
+            max_wait_time = 600  # 10 minutes
             poll_interval = 5    # 5 seconds
             elapsed_time = 0
             
@@ -98,7 +100,7 @@ def main():
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status == 'running':
+                        elif status == 'running' or status == 'processing':
                             # Continue polling
                             pass
                         else:

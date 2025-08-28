@@ -16,11 +16,11 @@ from pathlib import Path
 def main():
     """Run async test with 1 strategy and 1 file."""
     
-    # Hardcoded configuration for 1 strategy with 1 file
-    combo_name = "single_strategy_text_first_google"
-    file_name = "1_file"
+    # Hardcoded configuration for 1 strategy with 2 files
+    combo_name = "test_textF_openai_only"
+    file_name = "2_files"
     
-    print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 1 File")
+    print(f"🚀 Ultra Arena Main - Async Test: 1 Strategies with 2 Files")
     print(f"Combo: {combo_name}")
     print(f"Files: {file_name}")
     print("=" * 80)
@@ -88,7 +88,7 @@ def main():
                         
                         print(f"⏱️  Elapsed: {elapsed_time}s | Status: {status} | Progress: {progress}%")
                         
-                        if status in ['complete', 'completed']:
+                        if status == 'completed':
                             print("✅ Task completed successfully!")
                             result = status_data.get('result', {})
                             print(f"📊 Results: {json.dumps(result, indent=2)}")
@@ -98,7 +98,7 @@ def main():
                             error = status_data.get('error', 'Unknown error')
                             print(f"🚨 Error: {error}")
                             break
-                        elif status in ['running', 'processing', 'queued']:
+                        elif status == 'running':
                             # Continue polling
                             pass
                         else:

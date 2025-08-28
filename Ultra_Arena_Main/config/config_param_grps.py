@@ -55,13 +55,13 @@ param_grps = {
         "model": config_base.OPENAI_MODEL_GPT_41,
         "temperature": config_base.OPENAI_MODEL_TEMPERATURE
     },
-    # "grp_test_textF_openai_para" : {
-    #     "strategy": config_base.STRATEGY_TEXT_FIRST,
-    #     "mode": config_base.MODE_BATCH_PARALLEL,
-    #     "provider": config_base.PROVIDER_OPENAI,
-    #     "model": config_base.OPENAI_MODEL_GPT_41,
-    #     "temperature": config_base.OPENAI_MODEL_TEMPERATURE
-    # },
+    "grp_test_textF_openai_para" : {
+        "strategy": config_base.STRATEGY_TEXT_FIRST,
+        "mode": config_base.MODE_BATCH_PARALLEL,
+        "provider": config_base.PROVIDER_OPENAI,
+        "model": config_base.OPENAI_MODEL_GPT_41,
+        "temperature": config_base.OPENAI_MODEL_TEMPERATURE
+    },
     "grp_test_imageF_claude_para" : {
         "strategy": config_base.STRATEGY_IMAGE_FIRST,
         "mode": config_base.MODE_BATCH_PARALLEL,

@@ -41,7 +41,7 @@ def main():
     # Configuration constants
     MAX_NUM_FILES_PER_REQUEST = 10
     MAX_CC_STRATEGIES = 5
-    MAX_CC_FILEGROUPS = 5
+    MAX_CC_FILEGROUPS = 4
     
     # Prepare the request payload
     payload = {

@@ -104,8 +104,8 @@ class ClaudeClient(BaseLLMClient):
             
             # Log the request being sent to Claude
             logging.info("🔍 CLAUDE REQUEST:")
-            logging.info(f"   System Prompt: {system_prompt}")
-            logging.info(f"   User Prompt: {user_prompt}")
+            logging.debug(f"   System Prompt: {system_prompt}")
+            logging.debug(f"   User Prompt: {user_prompt}")
             if files:
                 logging.info(f"   Files: {[os.path.basename(f) for f in files]}")
             logging.info(f"   Model: {self.model_id}")
@@ -194,8 +194,8 @@ class ClaudeClient(BaseLLMClient):
             
             # Log the request being sent to Claude (async)
             logging.info("🔍 CLAUDE REQUEST (ASYNC):")
-            logging.info(f"   System Prompt: {system_prompt}")
-            logging.info(f"   User Prompt: {user_prompt}")
+            logging.debug(f"   System Prompt: {system_prompt}")
+            logging.debug(f"   User Prompt: {user_prompt}")
             if files:
                 logging.info(f"   Files: {[os.path.basename(f) for f in files]}")
             logging.info(f"   Model: {self.model_id}")

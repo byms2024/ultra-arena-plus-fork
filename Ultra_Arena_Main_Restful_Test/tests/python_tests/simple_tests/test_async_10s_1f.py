@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Simple Test: Asynchronous Combo Processing - 1 Strategy with 1 File
+Simple Test: Asynchronous Combo Processing - 10 Strategies with 4 Files
 
 This script tests the asynchronous combo processing endpoint against the REST API
-with single_strategy_text_first_google combo and 1_file directory in evaluation mode.
+with combo_test_10_strategies combo and 4_files directory in evaluation mode.
 """
 
 import requests
@@ -14,13 +14,13 @@ import time
 from pathlib import Path
 
 def main():
-    """Run async test with 1 strategy and 1 file."""
+    """Run async test with 10 strategies and 4 files."""
     
-    # Hardcoded configuration for 1 strategy with 1 file
-    combo_name = "single_strategy_text_first_google"
+    # Hardcoded configuration for 10 strategies with 4 files
+    combo_name = "combo_test_10_strategies"
     file_name = "1_file"
     
-    print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 1 File")
+    print(f"🚀 Ultra Arena Main - Async Test: 10 Strategies with 4 Files")
     print(f"Combo: {combo_name}")
     print(f"Files: {file_name}")
     print("=" * 80)
@@ -68,12 +68,14 @@ def main():
         
         if response.status_code == 202:
             print("✅ Task submitted successfully!")
-            task_id = response.json().get('request_id')
-            print(f"📋 Task ID: {task_id}")
+            response_data = response.json()
+            print(f"📋 Full Response: {response_data}")
+            request_id = response_data.get('request_id')
+            print(f"📋 Request ID: {request_id}")
             
             # Poll for status updates
-            status_endpoint = f"{base_url}/api/requests/{task_id}"
-            max_wait_time = 300  # 5 minutes
+            status_endpoint = f"{base_url}/api/requests/{request_id}"
+            max_wait_time = 600  # 10 minutes
             poll_interval = 5    # 5 seconds
             elapsed_time = 0
             

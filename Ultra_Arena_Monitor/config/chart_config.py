@@ -26,9 +26,10 @@ except ImportError:
 # relative to the repository root (resolved from the monitor package root).
 # For the current repo, we have a consolidated JSON at Ultra_Arena_Test_Example/modular_results.json
 # JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/default_fixture/output_files/results/results_250819_152301_8ce01d31-f39c-42ea-b1da-53b4dbdcf323/json"
-JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files/results_250822_024947_8e1c6395-f3dd-4a20-ae78-2f2d07c27642/json"
+# JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files/results_250822_024947_8e1c6395-f3dd-4a20-ae78-2f2d07c27642/json"
 PARENT_JSON_DATA_DIR = "../Ultra_Arena_Main_Restful_Test/test_fixtures/br_fixture/output_files"
-
+# JSON_DATA_DIR = "/Users/jameswang9311/Documents/My_Ultra_Arena_Fork/ultra-arena-frk_bk_250815_200f/Ultra_Arena_Main_Restful/run_profiles/default_profile_restful/output/results/combo/combo_test_8_strategies_13f/json"
+JSON_DATA_DIR = "/Users/jameswang9311/Documents/My_Ultra_Arena_Fork/ultra-arena-frk_bk250813_3_working/Ultra_Arena_Main/run_profiles/default_profile/output/results/combo/combo_test_8_strategies_13f/json"
 # Track Latest Configuration
 # When enabled, automatically tracks the most recently modified results directory
 # When disabled, tracks the specific directory defined in JSON_DATA_DIR

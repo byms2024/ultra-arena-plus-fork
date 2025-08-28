@@ -17,10 +17,10 @@ def main():
     """Run async test with 1 strategy and 1 file."""
     
     # Hardcoded configuration for 1 strategy with 1 file
-    combo_name = "single_strategy_text_first_google"
-    file_name = "1_file"
+    combo_name = "single_test_textF_openai"
+    file_name = "1_file_101"
     
-    print(f"🚀 Ultra Arena Main - Async Test: 4 Strategies with 1 File")
+    print(f"🚀 Ultra Arena Main - Async Test: 1 Strategies with 1 File")
     print(f"Combo: {combo_name}")
     print(f"Files: {file_name}")
     print("=" * 80)
