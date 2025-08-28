@@ -35,13 +35,13 @@ combo_config = {
             "grp_directF_google_gemini25_para",
             "grp_imageF_google_gemini25_para",
         ]
-    },   
-    "combo_test_4_strategies" : {
+    },    
+     "combo_test_top_4_strategies_2" : {
         "strategy_groups" : [
             "grp_directF_google_gemini25_para",
+            "grp_textF_google_gemini25_para",
             "grp_textF_dSeek_dChat_para",
-            "grp_test_imageF_openai_para",
-            "grp_test_imageF_claude_para"
+            "grp_test_textF_claude_para",
         ]
     },
     "combo_test_5_sub_strategies" : {
@@ -78,8 +78,7 @@ combo_config = {
             # "grp_imageF_togetherai_llama_vision_90b_para", # PROBLEM: togetherai error: "Only one image_url per content array is supported" 
             # "grp_imageF_grok_2_para" # no point, obviously over-expensive
         ]
-    },    
- 
+    },
     "combo_test_7_strategies" : {
         "strategy_groups" : [
             "grp_directF_google_gemini25_para",
@@ -281,8 +280,11 @@ combo_config = {
             "grp_textF_google_gemini25_para"
         ]
     },
-
-
+    "single_strategy_direct_file_google" : {
+        "strategy_groups" : [
+            "grp_directF_google_gemini25_para"
+        ]
+    },
     "single_strategy_image_first_claude" : {
         "strategy_groups" : [
             "grp_test_imageF_claude_para"
