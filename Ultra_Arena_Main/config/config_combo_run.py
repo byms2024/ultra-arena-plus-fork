@@ -290,7 +290,11 @@ combo_config = {
     #         # "grp_directF_dSeek_dChat_para", # WARNING - no support for direct pdf file
     #     ]
     # },
-
+    "single_strategy_text_first_deepseek" : {
+        "strategy_groups" : [
+            "grp_textF_dSeek_dChat_para"
+        ]
+    },
     "single_strategy_text_first_google" : {
         "strategy_groups" : [
             "grp_textF_google_gemini25_para"
