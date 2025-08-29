@@ -138,29 +138,364 @@ class ModularParallelProcessor:
         logging.info(f"🎉 ModularParallelProcessor initialization complete!")
     
     def load_checkpoint(self):
-        """Load processing checkpoint if exists."""
+        """Load processing checkpoint if exists (supports compressed files)."""
         logging.info(f"💾 Loading checkpoint...")
-        if os.path.exists(self.checkpoint_file):
-            try:
-                with open(self.checkpoint_file, 'rb') as f:
-                    checkpoint_data = pickle.load(f)
+        
+        # Check for both regular and compressed checkpoint files
+        checkpoint_files = [
+            self.checkpoint_file,
+            f"{self.checkpoint_file}.gz"
+        ]
+        
+        for checkpoint_file in checkpoint_files:
+            if os.path.exists(checkpoint_file):
+                try:
+                    if checkpoint_file.endswith('.gz'):
+                        import gzip
+                        with gzip.open(checkpoint_file, 'rb') as f:
+                            checkpoint_data = pickle.load(f)
+                    else:
+                        with open(checkpoint_file, 'rb') as f:
+                            checkpoint_data = pickle.load(f)
+                    
                     self.processed_files = checkpoint_data.get('processed_files', set())
+                    
+                    # Load retry state if available (backward compatible)
+                    if 'files_needing_retry' in checkpoint_data:
+                        self.files_needed_retry = set(checkpoint_data['files_needing_retry'])
+                        logging.info(f"🔄 Loaded {len(self.files_needed_retry)} files needing retry")
+                    if 'files_failed_after_max_retries' in checkpoint_data:
+                        self.files_failed_after_max_retries = set(checkpoint_data['files_failed_after_max_retries'])
+                        logging.info(f"❌ Loaded {len(self.files_failed_after_max_retries)} permanently failed files")
+                    if 'retry_state' in checkpoint_data:
+                        retry_state = checkpoint_data['retry_state']
+                        self.total_retry_tokens = retry_state.get('total_retry_tokens', 0)
+                        if 'retry_rounds_completed' in retry_state:
+                            self.retry_rounds_completed = retry_state['retry_rounds_completed']
+                        logging.info(f"🔁 Loaded retry state with {self.total_retry_tokens} retry tokens")
+                    
+                    # ✅ Validate checkpoint data
+                    self._validate_checkpoint_data(checkpoint_data)
+                    
                     logging.info(f"✅ Loaded checkpoint with {len(self.processed_files)} processed files")
-            except Exception as e:
-                logging.warning(f"⚠️ Failed to load checkpoint: {e}")
-    
+                    return
+                    
+                except Exception as e:
+                    logging.warning(f"⚠️ Failed to load checkpoint {checkpoint_file}: {e}")
+                    continue
+        
+        # No valid checkpoint found
+        logging.info(f"📂 No valid checkpoint found, starting fresh")
+        self.processed_files = set()
+        self.files_needed_retry = set()
+        self.files_failed_after_max_retries = set()
+        
     def save_checkpoint(self):
-        """Save processing checkpoint."""
+        """Save processing checkpoint with compression for large datasets.
+        Includes retry state to allow resuming failed entries.
+        """
         try:
             checkpoint_data = {
                 'processed_files': self.processed_files,
+                # Persist retry-related state (backward compatible schema)
+                'files_needing_retry': list(getattr(self, 'files_needed_retry', set())),
+                'files_failed_after_max_retries': list(getattr(self, 'files_failed_after_max_retries', set())),
+                'retry_state': {
+                    'total_retry_tokens': getattr(self, 'total_retry_tokens', 0),
+                    'retry_rounds_completed': getattr(self, 'retry_rounds_completed', 0)
+                },
                 'timestamp': datetime.now().isoformat()
             }
-            with open(self.checkpoint_file, 'wb') as f:
-                pickle.dump(checkpoint_data, f)
-            logging.info(f"💾 Checkpoint saved with {len(self.processed_files)} processed files")
+            
+            # Use compression for large datasets (more than 100 files)
+            if len(self.processed_files) > 100:
+                import gzip
+                checkpoint_file_compressed = f"{self.checkpoint_file}.gz"
+                with gzip.open(checkpoint_file_compressed, 'wb') as f:
+                    pickle.dump(checkpoint_data, f)
+                logging.info(f"💾 Compressed checkpoint saved with {len(self.processed_files)} processed files; retry queue: {len(self.files_needed_retry)}")
+            else:
+                with open(self.checkpoint_file, 'wb') as f:
+                    pickle.dump(checkpoint_data, f)
+                logging.info(f"💾 Checkpoint saved with {len(self.processed_files)} processed files; retry queue: {len(self.files_needed_retry)}")
+                
         except Exception as e:
             logging.error(f"❌ Failed to save checkpoint: {e}")
+    
+    def _cleanup_checkpoint(self):
+        """Remove checkpoint file after successful completion (handles both .pkl and .pkl.gz)."""
+        try:
+            # Remove both regular and compressed checkpoint files
+            checkpoint_files_to_remove = [
+                self.checkpoint_file,
+                f"{self.checkpoint_file}.gz"
+            ]
+            
+            for checkpoint_file in checkpoint_files_to_remove:
+                if os.path.exists(checkpoint_file):
+                    os.remove(checkpoint_file)
+                    logging.info(f"🧹 Cleaned up checkpoint file: {checkpoint_file}")
+                    
+        except Exception as e:
+            logging.warning(f"⚠️ Failed to cleanup checkpoint: {e}")
+    
+    def _track_processed_file(self, file_path: str, success: bool, retry_round: int = None):
+        """Centralized method for tracking processed files with retry awareness.
+        - On success: mark as processed.
+        - On failure: add to retry queue, do not mark as processed.
+        """
+        if success:
+            self.processed_files.add(file_path)
+            # If it was previously in retry queue, remove it
+            if hasattr(self, 'files_needed_retry') and file_path in self.files_needed_retry:
+                self.files_needed_retry.discard(file_path)
+        else:
+            # Ensure retry queue exists and persist membership
+            if hasattr(self, 'files_needed_retry'):
+                self.files_needed_retry.add(file_path)
+        
+        # Save checkpoint immediately
+        self.save_checkpoint()
+        
+        # Log tracking
+        status = "successful" if success else "failed"
+        logging.info(f"📝 Tracked {file_path} as {status} (retry_round: {retry_round})")
+    
+    def _validate_checkpoint_data(self, checkpoint_data: Dict[str, Any]):
+        """Validate checkpoint data structure and content."""
+        try:
+            # Check required keys
+            required_keys = ['processed_files', 'timestamp']
+            for key in required_keys:
+                if key not in checkpoint_data:
+                    logging.warning(f"⚠️ Checkpoint missing required key: {key}")
+                    return False
+            
+            # Validate processed_files is a set
+            if not isinstance(checkpoint_data['processed_files'], set):
+                logging.warning(f"⚠️ Checkpoint processed_files is not a set: {type(checkpoint_data['processed_files'])}")
+                return False
+            
+            # Validate timestamp format
+            try:
+                from datetime import datetime
+                datetime.fromisoformat(checkpoint_data['timestamp'])
+            except ValueError:
+                logging.warning(f"⚠️ Checkpoint timestamp format invalid: {checkpoint_data['timestamp']}")
+                return False
+            
+            logging.info(f"✅ Checkpoint validation passed")
+            return True
+            
+        except Exception as e:
+            logging.warning(f"⚠️ Checkpoint validation failed: {e}")
+            return False
+    
+    def get_checkpoint_health(self) -> Dict[str, Any]:
+        """Get checkpoint health information for PKL checkpoint files."""
+        try:
+            health_info = {
+                'checkpoint_file': self.checkpoint_file,
+                'checkpoint_exists': os.path.exists(self.checkpoint_file),
+                'compressed_checkpoint_exists': os.path.exists(f"{self.checkpoint_file}.gz"),
+                'processed_files_count': len(self.processed_files),
+                'last_save_time': None,
+                'checkpoint_size_mb': 0,
+                'health_status': 'unknown',
+                'file_format': 'PKL (pickle)',
+                'compression_enabled': len(self.processed_files) > 100
+            }
+            
+            # Check checkpoint file size and modification time
+            checkpoint_files = [self.checkpoint_file, f"{self.checkpoint_file}.gz"]
+            for checkpoint_file in checkpoint_files:
+                if os.path.exists(checkpoint_file):
+                    stat = os.stat(checkpoint_file)
+                    health_info['last_save_time'] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    health_info['checkpoint_size_mb'] = round(stat.st_size / (1024 * 1024), 2)
+                    health_info['health_status'] = 'healthy'
+                    
+                    # Add file type info
+                    if checkpoint_file.endswith('.gz'):
+                        health_info['active_checkpoint_type'] = 'compressed_pkl'
+                        health_info['compression_ratio'] = self._calculate_compression_ratio()
+                    else:
+                        health_info['active_checkpoint_type'] = 'standard_pkl'
+                    
+                    break
+            
+            return health_info
+            
+        except Exception as e:
+            logging.error(f"❌ Failed to get checkpoint health: {e}")
+            return {'health_status': 'error', 'error': str(e)}
+    
+    def _calculate_compression_ratio(self) -> float:
+        """Calculate compression ratio if both files exist."""
+        try:
+            if os.path.exists(self.checkpoint_file) and os.path.exists(f"{self.checkpoint_file}.gz"):
+                original_size = os.path.getsize(self.checkpoint_file)
+                compressed_size = os.path.getsize(f"{self.checkpoint_file}.gz")
+                if original_size > 0:
+                    return round((1 - compressed_size / original_size) * 100, 2)
+        except Exception:
+            pass
+        return 0.0
+    
+    def verify_pkl_integrity(self) -> Dict[str, Any]:
+        """Verify the integrity of PKL checkpoint files."""
+        try:
+            integrity_report = {
+                'checkpoint_file': self.checkpoint_file,
+                'integrity_status': 'unknown',
+                'file_size': 0,
+                'can_load': False,
+                'data_structure_valid': False,
+                'processed_files_count': 0,
+                'errors': []
+            }
+            
+            # Check for checkpoint files
+            checkpoint_files = [self.checkpoint_file, f"{self.checkpoint_file}.gz"]
+            active_checkpoint = None
+            
+            for checkpoint_file in checkpoint_files:
+                if os.path.exists(checkpoint_file):
+                    active_checkpoint = checkpoint_file
+                    break
+            
+            if not active_checkpoint:
+                integrity_report['integrity_status'] = 'no_checkpoint_found'
+                return integrity_report
+            
+            # Get file size
+            stat = os.stat(active_checkpoint)
+            integrity_report['file_size'] = stat.st_size
+            
+            # Try to load the PKL file
+            try:
+                if active_checkpoint.endswith('.gz'):
+                    import gzip
+                    with gzip.open(active_checkpoint, 'rb') as f:
+                        checkpoint_data = pickle.load(f)
+                else:
+                    with open(active_checkpoint, 'rb') as f:
+                        checkpoint_data = pickle.load(f)
+                
+                integrity_report['can_load'] = True
+                
+                # Validate data structure
+                if self._validate_checkpoint_data(checkpoint_data):
+                    integrity_report['data_structure_valid'] = True
+                    integrity_report['processed_files_count'] = len(checkpoint_data.get('processed_files', set()))
+                    integrity_report['integrity_status'] = 'healthy'
+                else:
+                    integrity_report['integrity_status'] = 'invalid_structure'
+                    integrity_report['errors'].append('Data structure validation failed')
+                    
+            except pickle.UnpicklingError as e:
+                integrity_report['integrity_status'] = 'corrupted_pkl'
+                integrity_report['errors'].append(f'PKL unpickling error: {str(e)}')
+            except Exception as e:
+                integrity_report['integrity_status'] = 'load_error'
+                integrity_report['errors'].append(f'Load error: {str(e)}')
+            
+            return integrity_report
+            
+        except Exception as e:
+            return {
+                'integrity_status': 'verification_error',
+                'error': str(e)
+            }
+    
+    def export_checkpoint_data(self, export_format: str = 'json') -> Dict[str, Any]:
+        """Export checkpoint data to different formats for debugging/analysis."""
+        try:
+            # Load current checkpoint data
+            checkpoint_data = None
+            checkpoint_files = [self.checkpoint_file, f"{self.checkpoint_file}.gz"]
+            
+            for checkpoint_file in checkpoint_files:
+                if os.path.exists(checkpoint_file):
+                    try:
+                        if checkpoint_file.endswith('.gz'):
+                            import gzip
+                            with gzip.open(checkpoint_file, 'rb') as f:
+                                checkpoint_data = pickle.load(f)
+                        else:
+                            with open(checkpoint_file, 'rb') as f:
+                                checkpoint_data = pickle.load(f)
+                        break
+                    except Exception:
+                        continue
+            
+            if not checkpoint_data:
+                return {'error': 'No checkpoint data available'}
+            
+            if export_format.lower() == 'json':
+                # Convert to JSON-serializable format
+                export_data = {
+                    'checkpoint_file': self.checkpoint_file,
+                    'export_timestamp': datetime.now().isoformat(),
+                    'processed_files_count': len(checkpoint_data.get('processed_files', set())),
+                    'processed_files_list': list(checkpoint_data.get('processed_files', set())),
+                    'checkpoint_timestamp': checkpoint_data.get('timestamp'),
+                    'export_format': 'json'
+                }
+                return export_data
+                
+            elif export_format.lower() == 'csv':
+                # Export as CSV-compatible data
+                processed_files = list(checkpoint_data.get('processed_files', set()))
+                export_data = {
+                    'checkpoint_file': self.checkpoint_file,
+                    'export_timestamp': datetime.now().isoformat(),
+                    'processed_files_count': len(processed_files),
+                    'processed_files': processed_files,
+                    'export_format': 'csv'
+                }
+                return export_data
+                
+            else:
+                return {'error': f'Unsupported export format: {export_format}'}
+                
+        except Exception as e:
+            return {'error': f'Export failed: {str(e)}'}
+    
+    def backup_checkpoint(self, backup_suffix: str = None) -> str:
+        """Create a backup of the current checkpoint file."""
+        try:
+            if not backup_suffix:
+                backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Find active checkpoint file
+            active_checkpoint = None
+            checkpoint_files = [self.checkpoint_file, f"{self.checkpoint_file}.gz"]
+            
+            for checkpoint_file in checkpoint_files:
+                if os.path.exists(checkpoint_file):
+                    active_checkpoint = checkpoint_file
+                    break
+            
+            if not active_checkpoint:
+                return "No checkpoint file to backup"
+            
+            # Create backup filename
+            backup_filename = f"{self.checkpoint_file}.backup_{backup_suffix}"
+            if active_checkpoint.endswith('.gz'):
+                backup_filename += '.gz'
+            
+            # Copy the file
+            import shutil
+            shutil.copy2(active_checkpoint, backup_filename)
+            
+            logging.info(f"💾 Checkpoint backup created: {backup_filename}")
+            return backup_filename
+            
+        except Exception as e:
+            error_msg = f"Failed to backup checkpoint: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            return error_msg
     
     def process_files(self, *, pdf_files: List[str], system_prompt: Optional[str] = None, user_prompt: str) -> Dict[str, Any]:
         """
@@ -182,10 +517,13 @@ class ModularParallelProcessor:
         
         # Filter out already processed files
         unprocessed_files = [f for f in pdf_files if f not in self.processed_files]
+        # Files explicitly marked for retry should be processed as part of retry flow
+        files_to_retry = [f for f in pdf_files if hasattr(self, 'files_needed_retry') and f in self.files_needed_retry]
         logging.info(f"📊 {len(unprocessed_files)} files need processing")
+        logging.info(f"🔄 {len(files_to_retry)} files queued for retry from checkpoint")
         
-        if not unprocessed_files:
-            logging.info("✅ All files already processed")
+        if not unprocessed_files and not files_to_retry:
+            logging.info("✅ All files already processed; no pending retries")
             return self.structured_output
         
         # Group files based on mode
@@ -218,7 +556,25 @@ class ModularParallelProcessor:
             logging.info(f"🔄 Processing {len(file_dict_for_retries)} files that need retry...")
             self._process_retries(file_dict_for_retries=file_dict_for_retries, user_prompt=user_prompt, system_prompt=system_prompt, lot_timestamp_hash=lot_timestamp_hash)
         else:
-            logging.info("✅ No files need retry")
+            logging.info("✅ No new files need retry from this run")
+
+        # Process files that were already in retry queue (from checkpoint)
+        if files_to_retry:
+            logging.info(f"🔄 Processing {len(files_to_retry)} files from existing retry queue (checkpoint)...")
+            existing_retry_dict = {}
+            for file_path in files_to_retry:
+                existing_retry_dict[file_path] = {
+                    'result': self.structured_output.get('file_stats', {}).get(file_path, {}),
+                    'missing_keys': ['unknown'],  # Will be re-detected
+                    'retry_count': 0,
+                    'num_retries_left': self.config.get("num_retry_for_mandatory_keys", 10)
+                }
+            self._process_retries(
+                file_dict_for_retries=existing_retry_dict,
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                lot_timestamp_hash=str(int(time.time()))
+            )
         
         # Calculate final statistics
         logging.info("📊 Calculating final statistics...")
@@ -244,6 +600,9 @@ class ModularParallelProcessor:
         # Save results
         logging.info("💾 Saving results...")
         self.save_results()
+        
+        # ✅ Clean up checkpoint after successful completion
+        self._cleanup_checkpoint()
         
         logging.info(f"🎉 Processing complete! Total time: {time.time() - start_time:.2f}s")
         return self.structured_output
@@ -306,6 +665,9 @@ class ModularParallelProcessor:
                         logging.info(f"--- ✅ real_time_save: _process_groups_parallel() ---")
                         self._save_results_incrementally()
                     
+                    # ✅ Save checkpoint after each group is processed
+                    self.save_checkpoint()
+                    
                 except Exception as e:
                     logging.error(f"❌ Error processing group {group_index}: {e}")
         
@@ -337,6 +699,9 @@ class ModularParallelProcessor:
                 if self.real_time_save:
                     logging.info(f"--- ✅ real_time_save: _process_groups_batch() ---")
                     self._save_results_incrementally()
+                
+                # ✅ Save checkpoint after each group is processed
+                self.save_checkpoint()
                 
             except Exception as e:
                 logging.error(f"❌ Error processing group {i}: {e}")
@@ -401,7 +766,7 @@ class ModularParallelProcessor:
                         }
                     }
                     processed_results.append((file_path, processed_result))
-                    self.processed_files.add(file_path)  # Add successful files
+                    self._track_processed_file(file_path, success=True)  # Use centralized tracking
                 else:
                     # Get actual file size
                     try:
@@ -425,7 +790,7 @@ class ModularParallelProcessor:
                         }
                     }
                     processed_results.append((file_path, processed_result))
-                    self.processed_files.add(file_path)  # Add failed files too
+                    self._track_processed_file(file_path, success=False)  # Use centralized tracking
             
             # Create group stats after token calculation
             group_stats = {
@@ -1266,7 +1631,8 @@ class ModularParallelProcessor:
                             final_result['file_process_result']['group_ids_incl_retries'] = [group_id]
                         
                         self.structured_output['file_stats'][file_path] = final_result
-                        self.processed_files.add(file_path)
+                        self._track_processed_file(file_path, success=True, retry_round=retry_round)
+                        
                         self.monitor.log_progress(f"✅ {os.path.basename(file_path)} retry successful (round {retry_round})")
                     else:
                         # Still missing keys, check retry count before adding to new retry dict
@@ -1308,7 +1674,8 @@ class ModularParallelProcessor:
                                         "file_size_mb": 0
                                     }
                                 }
-                                self.processed_files.add(file_path)  # Add files that are still in retry process
+                                self._track_processed_file(file_path, success=False, retry_round=retry_round)  # Use centralized tracking
+                                
                                 logging.info(f"🔍 Debug: After retry, {file_path} group_ids_incl_retries: {existing_group_ids}")
                                 logging.warning(f"⚠️ {os.path.basename(file_path)} retry failed. Missing keys: {missing_keys}. Retries left: {max_retries - file_dict_for_retries[file_path]['retry_count']}")
                             else:
@@ -1354,7 +1721,7 @@ class ModularParallelProcessor:
                                 final_result['file_process_result']['group_ids_incl_retries'] = existing_group_ids
                                 
                                 self.structured_output['file_stats'][file_path] = final_result
-                                self.processed_files.add(file_path)  # Add failed files after max retries
+                                self._track_processed_file(file_path, success=False, retry_round=max_retries)  # Use centralized tracking
                                 
                                 # Track files that failed after max retries (excluding 'Outros' documents)
                                 if result.get('DOC_TYPE') != 'Outros':
