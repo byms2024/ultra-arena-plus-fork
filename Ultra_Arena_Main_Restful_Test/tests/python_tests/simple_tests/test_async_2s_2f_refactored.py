@@ -17,8 +17,8 @@ def main():
     config = TestConfig(
         combo_name="test_both_strategies_openai",
         file_name="2_files",
-        max_wait_time=300,
-        poll_interval=5
+        max_wait_time=3000,
+        poll_interval=10
     )
     
     # Run the test

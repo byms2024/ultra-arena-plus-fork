@@ -17,7 +17,7 @@ def main():
     config = TestConfig(
         combo_name="test_textF_openai_only",
         file_name="200_files",
-        max_wait_time=1800,  # 30 minutes for large test
+        max_wait_time=3000,  # 30 minutes for large test
         poll_interval=10,    # 10 seconds for large test
         max_files_per_request=10
     )

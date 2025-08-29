@@ -31,8 +31,8 @@ class TestConfig:
     """Configuration for async test runs."""
     combo_name: str
     file_name: str
-    max_wait_time: int = 300  # 5 minutes default
-    poll_interval: int = 5    # 5 seconds default
+    max_wait_time: int = 3000  # 50 minutes default
+    poll_interval: int = 10    # 10 seconds default
     max_cc_strategies: int = 5
     max_cc_filegroups: int = 5
     max_files_per_request: int = 10

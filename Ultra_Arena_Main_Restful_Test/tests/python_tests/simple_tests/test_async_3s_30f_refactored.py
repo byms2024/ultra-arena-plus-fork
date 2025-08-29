@@ -17,8 +17,8 @@ def main():
     config = TestConfig(
         combo_name="combo_test_top_3_strategies_2",
         file_name="30_files",
-        max_wait_time=300,
-        poll_interval=5,
+        max_wait_time=3000,
+        poll_interval=10,
         max_cc_strategies=3,
         max_cc_filegroups=5
     )

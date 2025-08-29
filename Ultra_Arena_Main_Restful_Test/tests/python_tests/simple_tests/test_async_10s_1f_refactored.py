@@ -18,7 +18,7 @@ def main():
         combo_name="combo_test_10_strategies",
         file_name="1_file",
         max_wait_time=600,  # 10 minutes
-        poll_interval=5
+        poll_interval=10
     )
     
     # Run the test
