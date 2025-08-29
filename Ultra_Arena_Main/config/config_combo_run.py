@@ -44,6 +44,22 @@ combo_config = {
             "grp_test_textF_claude_para",
         ]
     },
+    "combo_test_top_3_strategies_2" : {
+        "strategy_groups" : [
+            "grp_directF_google_gemini25_para",
+            "grp_textF_google_gemini25_para",
+            # "grp_textF_dSeek_dChat_para",
+            "grp_test_textF_claude_para",
+        ]
+    },
+    "combo_test_top_2_strategies_2" : {
+        "strategy_groups" : [
+            "grp_directF_google_gemini25_para",
+            "grp_textF_google_gemini25_para",
+            # "grp_textF_dSeek_dChat_para",
+            # "grp_test_textF_claude_para",
+        ]
+    },    
     "combo_test_5_sub_strategies" : {
         "strategy_groups" : [
             "grp_test_imageF_claude_para",
@@ -290,4 +306,6 @@ combo_config = {
             "grp_test_imageF_claude_para"
         ]
     }
+
+
 }
