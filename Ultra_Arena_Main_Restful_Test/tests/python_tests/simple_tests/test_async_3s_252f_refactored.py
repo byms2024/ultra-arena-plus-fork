@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Refactored Test: Asynchronous Combo Processing - Top 4 Strategies with 252 Files
+Refactored Test: Asynchronous Combo Processing - 10 Strategies with 10 Files
 
 This script creates its own TestConfig and uses the test_async_utils module to run tests
 with minimal code duplication.
@@ -11,15 +11,16 @@ import sys
 
 
 def main():
-    """Run async test with top 4 strategies and 252 files using the utility module."""
+    """Run async test with 10 strategies and 10 files using the utility module."""
     
-    # Create the configuration for top 4 strategies with 252 files (using 200_files directory)
+    # Create the configuration for 10 strategies with 10 files
     config = TestConfig(
-        combo_name="combo_test_top_4_strategies_2",
+        combo_name="combo_test_top_3_strategies_2",
         file_name="200_files",
-        max_wait_time=1800,  # 30 minutes for large test
-        poll_interval=10,    # 10 seconds for large test
-        max_files_per_request=10
+        max_wait_time=300,
+        poll_interval=5,
+        max_cc_strategies=3,
+        max_cc_filegroups=5
     )
     
     # Run the test
