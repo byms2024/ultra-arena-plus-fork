@@ -2,18 +2,25 @@
 """
 Refactored Test: Asynchronous Combo Processing - 1 Strategy with 252 Files
 
-This script uses the test_async_utils module to run tests with minimal code duplication.
+This script creates its own TestConfig and uses the test_async_utils module to run tests
+with minimal code duplication.
 """
 
-from test_async_utils import get_test_config_1s_252f, run_async_test
+from test_async_utils import run_async_test, TestConfig
 import sys
 
 
 def main():
     """Run async test with 1 strategy and 252 files using the utility module."""
     
-    # Get the configuration for 1 strategy with 252 files
-    config = get_test_config_1s_252f("test_textF_openai_only")
+    # Create the configuration for 1 strategy with 252 files (using 200_files directory)
+    config = TestConfig(
+        combo_name="test_textF_openai_only",
+        file_name="200_files",
+        max_wait_time=1800,  # 30 minutes for large test
+        poll_interval=10,    # 10 seconds for large test
+        max_files_per_request=10
+    )
     
     # Run the test
     result = run_async_test(config)
