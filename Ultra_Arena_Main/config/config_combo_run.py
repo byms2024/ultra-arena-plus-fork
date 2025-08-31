@@ -305,6 +305,11 @@ combo_config = {
             "grp_directF_google_gemini25_para"
         ]
     },
+    "single_strategy_text_first_claude" : {
+        "strategy_groups" : [
+            "grp_test_textF_claude_para"
+        ]
+    },    
     "single_strategy_image_first_claude" : {
         "strategy_groups" : [
             "grp_test_imageF_claude_para"
