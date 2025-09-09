@@ -55,6 +55,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         
         # Extract text from PDFs with fallback and maintain mapping
         text_contents = []
+        text_contents_sensitized = []
         original_filenames = []
         successful_files = []
         
@@ -62,6 +63,13 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             text_content = self._extract_text_with_fallback(file_path)
             if text_content:
                 text_contents.append(text_content)
+                text_content_sensitized, reverse_map_csv = self._sensitize_text_content(text_content)
+                if text_content_sensitized:
+                    text_contents_sensitized.append(text_content_sensitized)
+                    print("=========text_content_sensitized===========\n")
+                    print(text_content_sensitized)
+                else:
+                    text_contents_sensitized.append(text_content)
                 original_filenames.append(Path(file_path).name)
                 successful_files.append(file_path)
                 logging.info(f"✅ Successfully extracted text from: {Path(file_path).name} ({len(text_content)} characters)")
@@ -84,7 +92,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         
         # Process text contents directly using LLM with embedded content
         results, group_stats = self._process_text_contents_directly(
-            text_contents=text_contents,
+            text_contents=text_contents_sensitized,
             original_filenames=original_filenames,
             successful_files=successful_files,
             group_index=group_index,
@@ -336,3 +344,36 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                 delay = base_delay * (2 ** attempt)
                 logging.warning(f"Attempt {attempt + 1} failed, retrying in {delay}s: {e}")
                 time.sleep(delay) 
+    
+    def _sensitize_text_content(self, text_content: str) -> str:
+        from llm_strategies.data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
+        
+        aggregate_values: dict[str, set[str]] = {
+            "CNPJ": set(),
+            "CPF": set(),
+            "CEP": set(),
+            "VIN": set(),
+            "CLAIM": set(),
+            "NAME": set(),
+            "ADDRESS": set(),
+        }
+
+        vals = _collect_sensitive_values_from_text(text_content)
+        for k, s in vals.items():
+            aggregate_values[k].update(s)
+
+        per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
+
+        hashed_text = _hash_text_with_maps(text_content, per_label_maps)
+        
+        try:
+            import csv
+            rev_path = "reverse_map.csv"
+            with rev_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["placeholder", "original"])
+                for placeholder, original in reverse_map.items():
+                    writer.writerow([placeholder, original])
+            return hashed_text, {"reverse_map_csv": str(rev_path)}
+        except Exception:
+            return hashed_text, {"reverse_map_csv": ""}
