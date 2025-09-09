@@ -219,37 +219,49 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
 
 
 # ==============================================================================
-def _find_sensitive_custom_patterns(text: str) -> list[tuple[int, int, str]]:
-    """Find spans for CNPJ, CPF, CEP, VIN, CLAIM_NO, and address via regex/heuristics for masking.
-
-    Returns list of (start, end, label).
-    """
-    spans: list[tuple[int, int, str]] = []
+def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
+    values: dict[str, set[str]] = {
+        "CNPJ": set(),
+        "CPF": set(),
+        "CEP": set(),
+        "VIN": set(),
+        "CLAIM": set(),
+        "NAME": set(),
+        "ADDRESS": set(),
+    }
+    t = text or ""
     for pat in CNPJ_PATTERNS:
-        for m in pat.finditer(text or ""):
+        for m in pat.finditer(t):
             digits = re.sub(r"\D", "", m.group(0))
             if digits in CNPJ_BANNED_DIGITS:
                 continue
-            spans.append((m.start(), m.end(), "CNPJ"))
-    for m in CPF_REGEX.finditer(text or ""):
-        spans.append((m.start(), m.end(), "CPF"))
-    for m in CEP_REGEX.finditer(text or ""):
-        spans.append((m.start(), m.end(), "CEP"))
-    for m in VIN_REGEX.finditer(text or ""):
-        spans.append((m.start(), m.end(), "VIN"))
-    for m in CLAIM_NO_REGEX.finditer(text or ""):
-        spans.append((m.start(), m.end(), "CLAIM"))
-    # crude address spans: capture lines containing address-like keywords
-    try:
-        for line in (text or "").splitlines():
-            low = line.lower()
-            if any(k in low for k in ADDRESS_KEYWORDS) and len(line) >= 10:
-                start = (text or "").find(line)
-                if start >= 0:
-                    spans.append((start, start + len(line), "ADDRESS"))
-    except Exception:
-        pass
-    return spans
+            values["CNPJ"].add(m.group(0))
+    for m in CPF_REGEX.finditer(t):
+        values["CPF"].add(m.group(0))
+    for m in CEP_REGEX.finditer(t):
+        values["CEP"].add(m.group(0))
+    for m in VIN_REGEX.finditer(t):
+        values["VIN"].add(m.group(0))
+    for m in CLAIM_NO_REGEX.finditer(t):
+        values["CLAIM"].add(m.group(0))
+    # address-like lines
+    # for line in t.splitlines():
+    #     low = line.lower()
+    #     if any(k in low for k in ADDRESS_KEYWORDS) and len(line) >= 10:
+    #         values["ADDRESS"].add(line)
+    # names via spaCy or heuristic
+    if _spacy_nlp is not None and t:
+        try:
+            doc = _spacy_nlp(t)
+            for ent in doc.ents:
+                if ent.label_ == "PER":
+                    values["NAME"].add(ent.text)
+        except Exception:
+            pass
+    else:
+        for s, e, _ in _heuristic_name_spans(t):
+            values["NAME"].add(t[s:e])
+    return values
 
 
 def _heuristic_name_spans(text: str) -> list[tuple[int, int, str]]:
@@ -533,10 +545,10 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
     for m in CLAIM_NO_REGEX.finditer(t):
         values["CLAIM"].add(m.group(0))
     # address-like lines
-    for line in t.splitlines():
-        low = line.lower()
-        if any(k in low for k in ADDRESS_KEYWORDS) and len(line) >= 10:
-            values["ADDRESS"].add(line)
+    # for line in t.splitlines():
+    #     low = line.lower()
+    #     if any(k in low for k in ADDRESS_KEYWORDS) and len(line) >= 10:
+    #         values["ADDRESS"].add(line)
     # names via spaCy or heuristic
     if _spacy_nlp is not None and t:
         try:
@@ -571,6 +583,8 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
         return text
     # Build a unified map: plain -> placeholder
     unified: dict[str, str] = {}
+    print("=========per_label_maps===========\n")
+    print(per_label_maps)
     for m in per_label_maps.values():
         unified.update(m)
     if not unified:
@@ -578,6 +592,8 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
     # Replace longer strings first to avoid partial overlaps
     sorted_items = sorted(unified.items(), key=lambda kv: len(kv[0]), reverse=True)
     out = text
+    print("=========out===========\n")
+    print(out)
     for plain, placeholder in sorted_items:
         if not plain:
             continue
@@ -585,6 +601,8 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
             out = out.replace(plain, placeholder)
         except Exception:
             continue
+    print("=========out2===========\n")
+    print(out)
     return out
 
 def extract_text_from_pdf(file_path: Path) -> str:

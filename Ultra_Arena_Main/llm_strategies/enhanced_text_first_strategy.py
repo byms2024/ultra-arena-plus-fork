@@ -63,7 +63,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             text_content = self._extract_text_with_fallback(file_path)
             if text_content:
                 text_contents.append(text_content)
-                text_content_sensitized, reverse_map_csv = self._sensitize_text_content(text_content)
+                text_content_sensitized = self._sensitize_text_content(text_content, Path(file_path).name)
                 if text_content_sensitized:
                     text_contents_sensitized.append(text_content_sensitized)
                     print("=========text_content_sensitized===========\n")
@@ -76,6 +76,9 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             else:
                 logging.error(f"❌ No text could be extracted from: {Path(file_path).name} using any available method")
         
+        print("=========text_contents_sensitized===========\n")
+        print(text_contents_sensitized)
+
         if not text_contents:
             logging.error(f"❌ No text could be extracted for group {group_index}")
             # Create error results for all files
@@ -345,7 +348,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                 logging.warning(f"Attempt {attempt + 1} failed, retrying in {delay}s: {e}")
                 time.sleep(delay) 
     
-    def _sensitize_text_content(self, text_content: str) -> str:
+    def _sensitize_text_content(self, text_content: str, fileName: str) -> str:
         from llm_strategies.data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
         
         aggregate_values: dict[str, set[str]] = {
@@ -358,14 +361,22 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             "ADDRESS": set(),
         }
 
+        file_text_cache: dict[Path, str] = {}
+
         vals = _collect_sensitive_values_from_text(text_content)
+        
+        file_text_cache[fileName] = text_content
+
         for k, s in vals.items():
             aggregate_values[k].update(s)
 
         per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
 
         hashed_text = _hash_text_with_maps(text_content, per_label_maps)
-        
+        print("=========hashed_text===========\n")
+        print(hashed_text)
+        return hashed_text
+
         try:
             import csv
             rev_path = "reverse_map.csv"
@@ -374,6 +385,5 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                 writer.writerow(["placeholder", "original"])
                 for placeholder, original in reverse_map.items():
                     writer.writerow([placeholder, original])
-            return hashed_text, {"reverse_map_csv": str(rev_path)}
         except Exception:
-            return hashed_text, {"reverse_map_csv": ""}
+            pass
