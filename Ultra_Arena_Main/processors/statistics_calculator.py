@@ -47,7 +47,7 @@ class StatisticsCalculator:
         total_processing_time = sum(stats.get('processing_time', 0) for stats in self.structured_output['group_stats'].values())
         
         self.structured_output['overall_stats'] = {
-            'total_files': total_files,
+            'total_processed_files': total_files,
             'successful_files': successful_files,
             'failed_files': failed_files,
             'success_rate': round(success_rate, 2),
@@ -165,7 +165,7 @@ class StatisticsCalculator:
         print("=" * 60)
         print("📊 PROCESSING SUMMARY")
         print("=" * 60)
-        print(f"📁 Total files processed: {overall_stats.get('total_files', 0)}")
+        print(f"📁 Total files processed: {overall_stats.get('total_processed_files', 0)}")
         print(f"⏱️  Total processing time: {overall_stats.get('total_time', 0):.2f}s")
         print(f"🔄 Files that needed retry: {retry_stats.get('num_files_may_need_retry', 0)}")
         print(f"❌ Files failed after max retries: {retry_stats.get('num_file_failed_after_max_retries', 0)}")

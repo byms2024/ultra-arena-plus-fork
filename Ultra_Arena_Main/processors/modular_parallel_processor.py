@@ -101,7 +101,7 @@ class ModularParallelProcessor:
                 'retry_total_tokens': 0
             },
             'overall_stats': {
-                'total_files': 0,
+                'total_processed_files': 0,
                 'total_estimated_tokens': 0,
                 'total_wall_time_in_sec': 0.0,
                 'total_group_wall_time_in_sec': 0.0,
@@ -1799,8 +1799,8 @@ class ModularParallelProcessor:
     
     def _calculate_accum_final_statistics(self, group_results: List[Tuple[str, Dict]], group_stats: Dict):
         """Accumulate statistics incrementally for a newly processed group."""
-        # Update total_files count
-        self.structured_output['overall_stats']['total_files'] = len(self.structured_output['file_stats'])
+        # Update total_processed_files count
+        self.structured_output['overall_stats']['total_processed_files'] = len(self.structured_output['file_stats'])
         
         # Accumulate token statistics from this group
         self.structured_output['overall_stats']['total_estimated_tokens'] += group_stats.get('estimated_tokens', 0)
@@ -1822,7 +1822,7 @@ class ModularParallelProcessor:
         """Calculate final processing statistics to match backup project exactly."""
         # Store current accumulated stats for verification
         current_accumulated_stats = {
-            'total_files': self.structured_output['overall_stats'].get('total_files', 0),
+            'total_processed_files': self.structured_output['overall_stats'].get('total_processed_files', 0),
             'total_estimated_tokens': self.structured_output['overall_stats'].get('total_estimated_tokens', 0),
             'total_group_wall_time_in_sec': self.structured_output['overall_stats'].get('total_group_wall_time_in_sec', 0),
             'total_prompt_tokens': self.structured_output['overall_stats'].get('total_prompt_tokens', 0),
@@ -1833,7 +1833,7 @@ class ModularParallelProcessor:
         }
         
         # Calculate final statistics using the original method
-        self.structured_output['overall_stats']['total_files'] = len(self.structured_output['file_stats'])
+        self.structured_output['overall_stats']['total_processed_files'] = len(self.structured_output['file_stats'])
         # Update total_wall_time_in_sec incrementally (accumulated from group processing times)
         self.structured_output['overall_stats']['total_wall_time_in_sec'] = self.structured_output['overall_stats'].get('total_wall_time_in_sec', 0)
         
@@ -2050,7 +2050,7 @@ class ModularParallelProcessor:
                 del self.structured_output['overall_stats']['total_actual_tokens']
             
             # Calculate total processed files from overall_stats
-            total_processed_files = self.structured_output.get('overall_stats', {}).get('total_files', 0)
+            total_processed_files = self.structured_output.get('overall_stats', {}).get('total_processed_files', 0)
             # Ensure it's an integer to avoid None comparison issues
             if total_processed_files is None:
                 total_processed_files = 0
@@ -2150,24 +2150,24 @@ class ModularParallelProcessor:
         """
         # Get benchmark error statistics from BenchmarkTracker
         error_stats = self.benchmark_tracker.get_error_stats()
-        total_files = self.structured_output.get('overall_stats', {}).get('total_files', 0)
-        # Ensure total_files is an integer to avoid None comparison issues
-        if total_files is None:
-            total_files = 0
+        total_processed_files = self.structured_output.get('overall_stats', {}).get('total_processed_files', 0)
+        # Ensure total_processed_files is an integer to avoid None comparison issues
+        if total_processed_files is None:
+            total_processed_files = 0
         else:
-            total_files = int(total_files)
+            total_processed_files = int(total_processed_files)
             
         total_unmatched_fields = error_stats.get('total_unmatched_fields', 0)
         total_unmatched_files = error_stats.get('total_unmatched_files', 0)
         
         # Calculate the new fields
-        total_fields = total_files * 5  # 5 mandatory fields
+        total_fields = total_processed_files * 5  # 5 mandatory fields
         invalid_fields_percent = (total_unmatched_fields / total_fields * 100) if total_fields > 0 else 0
-        invalid_files_percent = (total_unmatched_files / total_files * 100) if total_files > 0 else 0
+        invalid_files_percent = (total_unmatched_files / total_processed_files * 100) if total_processed_files > 0 else 0
         
         # Create the new benchmark_comparison structure
         benchmark_comparison = {
-            "total_files": total_files,
+            "total_processed_files": total_processed_files,
             "total_fields": total_fields,
             "total_unmatched_fields": total_unmatched_fields,
             "total_unmatched_files": total_unmatched_files,
