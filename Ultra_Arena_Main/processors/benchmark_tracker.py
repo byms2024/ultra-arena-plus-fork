@@ -12,7 +12,7 @@ import pandas as pd
 class BenchmarkTracker:
     """Tracks benchmark comparisons and errors."""
     
-    def __init__(self, benchmark_comparator=None, csv_output_file: str = None):
+    def __init__(self, benchmark_comparator=None, csv_output_file: str | None = None):
         self.benchmark_comparator = benchmark_comparator
         self.csv_output_file = csv_output_file
         

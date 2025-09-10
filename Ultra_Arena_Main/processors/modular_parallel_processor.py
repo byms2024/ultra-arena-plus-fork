@@ -28,8 +28,8 @@ class ModularParallelProcessor:
                  mode: str = "parallel", max_workers: int = 5,
                  checkpoint_file: str = "modular_checkpoint.pkl", 
                  output_file: str = "modular_results.json",
-                 real_time_save: bool = True, run_settings: Dict[str, str] = None,
-                 csv_output_file: str = None, benchmark_comparator = None,
+                 real_time_save: bool = True, run_settings: Dict[str, str] | None = None,
+                 csv_output_file: str | None = None, benchmark_comparator = None,
                  streaming: bool = False):
         """
         Initialize the modular parallel processor.
@@ -239,7 +239,7 @@ class ModularParallelProcessor:
         except Exception as e:
             logging.warning(f"⚠️ Failed to cleanup checkpoint: {e}")
     
-    def _track_processed_file(self, file_path: str, success: bool, retry_round: int = None):
+    def _track_processed_file(self, file_path: str, success: bool, retry_round: int | None = None):
         """Centralized method for tracking processed files with retry awareness.
         - On success: mark as processed.
         - On failure: add to retry queue, do not mark as processed.
@@ -462,7 +462,7 @@ class ModularParallelProcessor:
         except Exception as e:
             return {'error': f'Export failed: {str(e)}'}
     
-    def backup_checkpoint(self, backup_suffix: str = None) -> str:
+    def backup_checkpoint(self, backup_suffix: str | None = None) -> str:
         """Create a backup of the current checkpoint file."""
         try:
             if not backup_suffix:
