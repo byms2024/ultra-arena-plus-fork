@@ -98,7 +98,22 @@ class OllamaClient(BaseLLMClient):
             return result
             
         except Exception as e:
-            logging.error(f"Ollama API error: {e}")
+            # Enhanced error logging for Ollama with clear visual indicators
+            error_str = str(e).lower()
+            
+            if "failed to connect" in error_str or "connection refused" in error_str:
+                logging.error(f"🔌❌ CRITICAL: Ollama service unavailable - {e}")
+                logging.error(f"💡 Please start Ollama service: https://ollama.com/download")
+            elif "not found" in error_str and "model" in error_str:
+                logging.error(f"🤖❌ MODEL ERROR: Ollama model '{self.model_name}' not found - {e}")
+                logging.error(f"💡 Pull model with: ollama pull {self.model_name}")
+            elif "timeout" in error_str:
+                logging.error(f"⏰❌ TIMEOUT: Ollama request timed out - {e}")
+            elif "refused" in error_str or "unavailable" in error_str:
+                logging.error(f"🚨 CONNECTION ERROR: {e}")
+            else:
+                logging.error(f"❌ Ollama API error: {e}")
+            
             return {"error": str(e)}
     
     def _parse_ollama_response(self, content: str) -> Dict[str, Any]:
