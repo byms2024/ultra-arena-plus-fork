@@ -74,19 +74,12 @@ USER_PROMPT = """
         3.  **'Outros'**: Atribua este valor se nenhuma das condições para 'Serviço' ou 'Peças' for atendida. 
     
     * se 'DOC_TYPE' for 'Outros', você deve ignorar o resto do prompt e atribuir valores nulos aos outros campos do json e encerrar o processamento.
-    * **'CNPJ_1'**: O valor único para 'CNPJ_1' - primeira ocorrência que corresponde aos critérios: **DEVE TER EXATAMENTE 18 CARACTERES** e seguir o formato "XX.XXX.XXX/XXXX-XX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
-    * se 'DOC_TYPE' for 'Serviço', **'CNPJ_2'**: O valor único para 'CNPJ_2' - segunda ocorrência que corresponde ao critério: **DEVE TER EXATAMENTE 18 CARACTERES** e seguir o formato "XX.XXX.XXX/XXXX-XX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
+    * **'CNPJ_1'**: O valor único para 'CNPJ_1' - primeira ocorrência que corresponde aos critérios: **DEVE TER EXATAMENTE 21 CARACTERES** e seguir o formato "CNPJ_XXXXXXXXXXXXXXXX". **SOMENTE CASO NÃO ENCONTRE ESSE VALOR** considere a primeira correspondência que **DEVE TER EXATAMENTE 18 CARACTERES** e seguir o formato "XX.XXX.XXX/XXXX-XX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
+    * se 'DOC_TYPE' for 'Serviço', **'CNPJ_2'**: O valor único para 'CNPJ_2' - segunda ocorrência que corresponde ao critério: **DEVE TER EXATAMENTE 21 CARACTERES** e seguir o formato "CNPJ_XXXXXXXXXXXXXXXX". **SOMENTE CASO NÃO ENCONTRE ESSE VALOR** considere a primeira correspondência que **DEVE TER EXATAMENTE 18 CARACTERES** e seguir o formato "XX.XXX.XXX/XXXX-XX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
     
     * **'VALOR_TOTAL'**: O valor único para 'VALOR_TOTAL' é o valor associado a o campo 'VALOR_TOTAL'(sem distinção de maiúsculas e minúsculas) ou 'VALOR_TOTAL DO NOTA' (sem distinção de maiúsculas e minúsculas) e deve ser um número científico brasileiro (ex: 1.234,56). Se o valor original usar ponto como separador decimal (ex: 1234.56 ou 1,234.56), **converta-o para o formato brasileiro com vírgula como separador decimal.**
-    * **'Chassi'**: O valor único para 'Chassi' **SEMPRE** começa com 'L' e **DEVE TER EXATAMENTE 17 CARACTERES** (número VIN padrão). **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
-    * **'CLAIM_NUMBER'**: O valor único para 'CLAIM_NUMBER' está localizado no final do arquivo, após a seção 'INFORMAÇÕES COMPLEMENTARES'. Este valor **SEMPRE** começa com 'BYDAMEBR' e **DEVE TER 28-30 CARACTERES**, no formato "BYDAMEBRXXXXXXXXXXXXXXXXX_XX". 
-    
-    **⚠️ CRÍTICO PARA CLAIM_NUMBER:**
-    * **SEMPRE** inclua o sufixo "_XX" (ex: "_01", "_02", etc.) no final do CLAIM_NUMBER
-    * **NUNCA** trunque ou remova o sufixo "_XX" 
-    * O formato completo deve ser: "BYDAMEBR" + 16-18 caracteres + "_" + 2 dígitos
-    * **EXEMPLOS CORRETOS**: "BYDAMEBR0020WCN241200011_01", "BYDAMEBR0015WCN241200032_01"
-    * **EXEMPLOS INCORRETOS**: "BYDAMEBR0020WCN241200011" (faltando "_01")
+    * **'Chassi'**: O valor único para 'Chassi' que corresponde aos critérios: **DEVE TER EXATAMENTE 20 CARACTERES** e seguir o formato "VIN_XXXXXXXXXXXXXXXX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
+    * **'CLAIM_NUMBER'**: O valor único para 'CLAIM_NUMBER' está localizado no final do arquivo, após a seção 'INFORMAÇÕES COMPLEMENTARES'. Este valor **DEVE TER EXATAMENTE 22 CARACTERES** e seguir o formato "CLAIM_XXXXXXXXXXXXXXXX". 
     
     **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
 
