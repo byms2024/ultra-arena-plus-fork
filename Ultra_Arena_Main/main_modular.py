@@ -161,7 +161,7 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
         return config
     elif strategy_type == STRATEGY_TEXT_FIRST:
         config = {
-            "llm_provider": LOCAL_LLM_PROVIDER,
+            "llm_provider": llm_provider or LOCAL_LLM_PROVIDER,
             "provider_configs": TEXT_PROVIDER_CONFIGS,
             "pdf_extractor_lib": PDF_EXTRACTOR_LIB,
             "secondary_pdf_extractor_lib": SECONDARY_PDF_EXTRACTOR_LIB,

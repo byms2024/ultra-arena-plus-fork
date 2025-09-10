@@ -248,11 +248,17 @@ combo_config = {
             "grp_test_textF_openai_para"
         ]
     },    
-    "single_test_textF_ollama" : {
+    "single_test_textF_ollama_deepR1" : {
         "strategy_groups" : [
-            "grp_textF_ollama_deepseek_r1_8b_para"
+            "grp_textF_ollama_deepR1_para"
         ]
     },
+    "single_test_textF_ollama_mistral" : {
+        "strategy_groups" : [
+            "grp_textF_ollama_mistral_para"
+        ]
+    },
+    
     # # qwen_vl_72b take 300s to run, not practical
     # "test_togetherai_qwen_vl_72b_only" : {
     #     "input_files" : DIR_1_FILES,
