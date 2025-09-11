@@ -263,6 +263,13 @@ combo_config = {
             "grp_textF_ollama_gptOss20b_para"
         ]
     },
+    "combo_test_textF_ollama_3s" : {
+        "strategy_groups" : [
+            "grp_textF_ollama_gptOss20b_para",
+            "grp_textF_ollama_deepR1_para",
+            "grp_textF_ollama_mistral_para"
+        ]
+    },
     # # qwen_vl_72b take 300s to run, not practical
     # "test_togetherai_qwen_vl_72b_only" : {
     #     "input_files" : DIR_1_FILES,
