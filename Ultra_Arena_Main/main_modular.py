@@ -7,6 +7,7 @@ with different strategies and configurations.
 """
 
 import argparse
+import copy
 import logging
 import os
 import sys
@@ -152,6 +153,8 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
         if llm_provider:
             config["llm_provider"] = llm_provider
         if llm_model and llm_provider in config["provider_configs"]:
+            # Create a deep copy to avoid race condition with shared provider_configs
+            config["provider_configs"] = copy.deepcopy(config["provider_configs"])
             config["provider_configs"][llm_provider]["model"] = llm_model
         
         # Add streaming configuration to provider configs
@@ -190,6 +193,8 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
         if llm_provider:
             config["llm_provider"] = llm_provider
         if llm_model and llm_provider in config["provider_configs"]:
+            # Create a deep copy to avoid race condition with shared provider_configs
+            config["provider_configs"] = copy.deepcopy(config["provider_configs"])
             config["provider_configs"][llm_provider]["model"] = llm_model
         return config
     elif strategy_type == STRATEGY_IMAGE_FIRST:
@@ -230,6 +235,8 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
         if llm_provider:
             config["llm_provider"] = llm_provider
         if llm_model and llm_provider in config["provider_configs"]:
+            # Create a deep copy to avoid race condition with shared provider_configs
+            config["provider_configs"] = copy.deepcopy(config["provider_configs"])
             config["provider_configs"][llm_provider]["model"] = llm_model
         return config
     elif strategy_type == STRATEGY_HYBRID:
