@@ -111,7 +111,8 @@ GROK_MODEL_ID_GROK_2 = "grok-2-vision-latest"
 GROK_MODEL_TEMPERATURE = 0.1
 
 # Ollama Configuration (for local LLMs)
-LOCAL_OLLAMA_MODEL_DEEP_R1 = "deepseek-r1:8b"
+LOCAL_OLLAMA_MODEL_GPT_OSS_20B = "gpt-oss:20b"
+LOCAL_OLLAMA_MODEL_DEEP_R1 = "deepseek-r1:latest"
 LOCAL_OLLAMA_MODEL_MISTRAL = "mistral:latest"
 LOCAL_OLLAMA_MODEL_LLAMA_3_2_11B = "llama3.2-vision:11b"
 LOCAL_OLLAMA_MODEL_LLAVA_7B = "llava:7b"

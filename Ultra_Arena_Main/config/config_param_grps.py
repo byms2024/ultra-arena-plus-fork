@@ -1,19 +1,26 @@
 from config import config_base
 
 param_grps = {
+    "grp_textF_ollama_gptOss20b_para" : {
+        "strategy": config_base.STRATEGY_TEXT_FIRST,
+        "mode": config_base.MODE_BATCH_PARALLEL,
+        "provider": config_base.PROVIDER_OLLAMA,
+        "model": config_base.LOCAL_OLLAMA_MODEL_GPT_OSS_20B,
+        "temperature": config_base.LOCAL_OLLAMA_TEMPERATURE
+    },  
     "grp_textF_ollama_deepR1_para" : {
         "strategy": config_base.STRATEGY_TEXT_FIRST,
         "mode": config_base.MODE_BATCH_PARALLEL,
         "provider": config_base.PROVIDER_OLLAMA,
         "model": config_base.LOCAL_OLLAMA_MODEL_DEEP_R1,
-        "temperature": config_base.DEEPSEEK_MODEL_TEMPERATURE
+        "temperature": config_base.LOCAL_OLLAMA_TEMPERATURE
     },    
     "grp_textF_ollama_mistral_para" : {
         "strategy": config_base.STRATEGY_TEXT_FIRST,
         "mode": config_base.MODE_BATCH_PARALLEL,
         "provider": config_base.PROVIDER_OLLAMA,
         "model": config_base.LOCAL_OLLAMA_MODEL_MISTRAL,
-        "temperature": config_base.DEEPSEEK_MODEL_TEMPERATURE
+        "temperature": config_base.LOCAL_OLLAMA_TEMPERATURE
     },    
     # Deepseek, Currently, the DeepSeek API (as of the latest version) does not support direct file uploads (PDF, DOCX, images, etc.) or processing via URLs. You can only send plain text as input in the API request.
     # The directF strategy for deepseek has been replaced with textF strategy since it actually goes through PyPDF2 text extraction 
