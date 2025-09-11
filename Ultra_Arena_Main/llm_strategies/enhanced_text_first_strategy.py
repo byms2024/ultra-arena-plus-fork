@@ -82,6 +82,12 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             }
             return results, group_stats, group_id
         
+        # Choose which prompt to use based on provider
+        from config import config_base
+        prompt_to_use = config_base.SIMPLIFIED_USER_PROMPT if self.llm_provider == "ollama" else user_prompt
+        
+        logging.info(f"📝 Using {'simplified' if self.llm_provider == 'ollama' else 'full'} prompt for {self.llm_provider} provider")
+        
         # Process text contents directly using LLM with embedded content
         results, group_stats = self._process_text_contents_directly(
             text_contents=text_contents,
@@ -89,7 +95,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             successful_files=successful_files,
             group_index=group_index,
             system_prompt=system_prompt,
-            user_prompt=user_prompt
+            user_prompt=prompt_to_use
         )
         
         # Add error results for failed files

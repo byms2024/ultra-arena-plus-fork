@@ -24,6 +24,7 @@ class PromptConfig(BaseModel):
     """Configuration for LLM prompts with source tracking."""
     system_prompt: str = Field(default="", description="System prompt for LLM")
     user_prompt: str = Field(default="", description="User prompt for LLM")
+    simplified_user_prompt: str = Field(default="", description="Simplified user prompt for local models")
     json_format_instructions: str = Field(default="", description="JSON formatting instructions")
     mandatory_keys: List[str] = Field(default_factory=list, description="Mandatory keys for extraction")
     text_first_regex_criteria: Dict[str, Any] = Field(default_factory=dict, description="Text-first regex criteria")

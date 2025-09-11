@@ -84,6 +84,7 @@ class BaseConfigAssembler(ABC):
         prompt_fields = {
             'system_prompt': 'SYSTEM_PROMPT',
             'user_prompt': 'USER_PROMPT', 
+            'simplified_user_prompt': 'SIMPLIFIED_USER_PROMPT',
             'json_format_instructions': 'JSON_FORMAT_INSTRUCTIONS',
             'mandatory_keys': 'MANDATORY_KEYS',
             'text_first_regex_criteria': 'TEXT_FIRST_REGEX_CRITERIA'

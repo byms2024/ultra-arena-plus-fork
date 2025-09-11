@@ -131,6 +131,7 @@ class RestServerConfigAssembler(BaseConfigAssembler):
             # Inject prompts
             config_base.SYSTEM_PROMPT = self._cached_config.prompts.system_prompt
             config_base.USER_PROMPT = self._cached_config.prompts.user_prompt
+            config_base.SIMPLIFIED_USER_PROMPT = self._cached_config.prompts.simplified_user_prompt
             config_base.JSON_FORMAT_INSTRUCTIONS = self._cached_config.prompts.json_format_instructions
             config_base.MANDATORY_KEYS = self._cached_config.prompts.mandatory_keys
             config_base.TEXT_FIRST_REGEX_CRITERIA = self._cached_config.prompts.text_first_regex_criteria

@@ -33,6 +33,7 @@ class OllamaClient(BaseLLMClient):
     def call_llm(self, *, files: Optional[List[str]] = None, system_prompt: Optional[str] = None, user_prompt: str, 
                  strategy_type: Optional[str] = None) -> Dict[str, Any]:
         """Call Ollama with user prompt, optional system prompt (text-only for now)."""
+        logging.info("🚀🚀🚀 OLLAMA CLIENT CALLED - SIMPLIFIED PROMPT VERSION 🚀🚀🚀")
         try:
             # Ollama doesn't support file uploads in the same way
             # For text-first processing, we pass the extracted text as part of the prompt
@@ -44,26 +45,25 @@ class OllamaClient(BaseLLMClient):
             else:
                 messages.append({"role": "system", "content": "You are a helpful assistant that extracts information from documents."})
             
-            # Add user prompt with filename embedding if files are provided
-            if files and len(files) > 0:
-                # Use the evolved filename embedding method
-                content_parts = create_content_parts_with_embedded_names(
-                    files=files,
-                    original_filenames=[os.path.basename(f) for f in files],
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    is_image_mode=False
-                )
-                
-                # Extract text content from parts for Ollama
-                enhanced_prompt = ""
-                for part in content_parts:
-                    if part.get("text"):
-                        enhanced_prompt += part["text"] + "\n"
-                
-                messages.append({"role": "user", "content": enhanced_prompt.strip()})
+            # Add user prompt with filename embedding if files are provided, 
+            # or if user_prompt is very long (indicating text-first strategy with embedded content)
+            if (files and len(files) > 0) or len(user_prompt) > 8000:
+                # For Ollama, use simplified prompt to test length hypothesis
+                logging.info("🔍 DEBUG: Using simplified Ollama prompt")
+                simplified_prompt = self._create_ollama_simplified_prompt(files or [], user_prompt)
+                logging.info(f"🔍 DEBUG: Simplified prompt length: {len(simplified_prompt)}")
+                messages.append({"role": "user", "content": simplified_prompt})
             else:
                 messages.append({"role": "user", "content": user_prompt})
+            
+            # Debug: Log the exact prompt being sent to Ollama
+            logging.info(f"🔍 Ollama Prompt Debug - Model: {self.model_name}")
+            for i, msg in enumerate(messages):
+                content = msg['content']
+                if len(content) > 3000:
+                    logging.info(f"🔍 Message {i} ({msg['role']}) [Length: {len(content)}]: {content[:1500]}... [MIDDLE TRUNCATED] ...{content[-1500:]}")
+                else:
+                    logging.info(f"🔍 Message {i} ({msg['role']}) [Length: {len(content)}]: {content}")
             
             response = ollama.chat(
                 model=self.model_name,
@@ -115,6 +115,71 @@ class OllamaClient(BaseLLMClient):
                 logging.error(f"❌ Ollama API error: {e}")
             
             return {"error": str(e)}
+    
+    def _create_ollama_simplified_prompt(self, files: List[str], original_user_prompt: str) -> str:
+        """Create a simplified prompt specifically for Ollama to test length hypothesis."""
+        
+        # Simplified extraction instructions specifically for Ollama
+        simplified_instructions = """
+Extraia APENAS estas 5 informações do documento em formato JSON:
+
+{
+  "DOC_TYPE": "Serviço" ou "Peças" ou "Outros",
+  "CNPJ_1": "primeiro CNPJ no formato XX.XXX.XXX/XXXX-XX", 
+  "VALOR_TOTAL": "valor total no formato brasileiro com vírgula",
+  "Chassi": "código de 17 caracteres começando com L",
+  "CLAIM_NUMBER": "código começando com BYDAMEBR"
+}
+
+REGRAS:
+- Use null se não encontrar o valor
+- Responda APENAS com JSON válido
+- Não adicione explicações ou texto extra
+"""
+        
+        # In text-first strategy, document content is already embedded in original_user_prompt
+        # Extract the document content from the original prompt
+        document_content = ""
+        
+        if files and len(files) > 0:
+            # If we have files, use the standard filename embedding method
+            from llm_client.client_utils import create_content_parts_with_embedded_names
+            
+            content_parts = create_content_parts_with_embedded_names(
+                files=files,
+                original_filenames=[os.path.basename(f) for f in files],
+                system_prompt=None,
+                user_prompt="",  # We'll create our own simplified prompt
+                is_image_mode=False
+            )
+            
+            # Extract just the document content parts (skip the user prompt part)
+            for part in content_parts:
+                if part.get("text") and ("=== FILE:" in part["text"] or "=== END FILE:" in part["text"] or len(part["text"]) > 1000):
+                    document_content += part["text"] + "\n"
+        else:
+            # In text-first strategy, extract document content from the original_user_prompt
+            # Look for content between FILE markers or just use the content after the main instructions
+            if "=== FILE:" in original_user_prompt:
+                # Extract everything from the first FILE marker onwards
+                parts = original_user_prompt.split("=== FILE:")
+                if len(parts) > 1:
+                    document_content = "=== FILE:" + "=== FILE:".join(parts[1:])
+            else:
+                # If no FILE markers, assume the document content comes after the main instructions
+                # Find where the actual document content starts (usually after long instruction blocks)
+                lines = original_user_prompt.split('\n')
+                content_start_idx = 0
+                
+                # Look for the end of instruction blocks (usually followed by document content)
+                for i, line in enumerate(lines):
+                    if len(line.strip()) > 0 and not line.startswith('[') and not line.startswith('{') and 'formato' not in line.lower() and 'json' not in line.lower():
+                        content_start_idx = i
+                        break
+                
+                document_content = '\n'.join(lines[content_start_idx:])
+        
+        return simplified_instructions + "\n\n" + document_content
     
     def _parse_ollama_response(self, content: str) -> Dict[str, Any]:
         """Parse Ollama response, handling thinking tags and JSON extraction."""

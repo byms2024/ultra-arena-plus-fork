@@ -8,6 +8,20 @@ param_grps = {
         "model": config_base.LOCAL_OLLAMA_MODEL_GPT_OSS_20B,
         "temperature": config_base.LOCAL_OLLAMA_TEMPERATURE
     },  
+    "grp_textF_ollama_gemma3_para" : {
+        "strategy": config_base.STRATEGY_TEXT_FIRST,
+        "mode": config_base.MODE_BATCH_PARALLEL,
+        "provider": config_base.PROVIDER_OLLAMA,
+        "model": config_base.LOCAL_OLLAMA_MODEL_GEMMA3_12B,
+        "temperature": config_base.LOCAL_OLLAMA_TEMPERATURE
+    },   
+    "grp_textF_ollama_llama3_para" : {
+        "strategy": config_base.STRATEGY_TEXT_FIRST,
+        "mode": config_base.MODE_BATCH_PARALLEL,
+        "provider": config_base.PROVIDER_OLLAMA,
+        "model": config_base.LOCAL_OLLAMA_MODEL_LLAMA3_8B,
+        "temperature": config_base.LOCAL_OLLAMA_TEMPERATURE
+    },           
     "grp_textF_ollama_deepR1_para" : {
         "strategy": config_base.STRATEGY_TEXT_FIRST,
         "mode": config_base.MODE_BATCH_PARALLEL,
