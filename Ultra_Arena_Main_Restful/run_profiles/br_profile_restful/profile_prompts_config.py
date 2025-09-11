@@ -40,6 +40,46 @@ JSON_FORMAT_INSTRUCTIONS = """
       ```
 """
 
+# Simplified JSON Formatting Instructions for Ollama models
+SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
+**⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
+* **NUNCA** responda com texto explicativo antes ou depois do JSON
+* **NUNCA** use markdown code blocks (```json ou ```)
+* **SEMPRE** responda APENAS com JSON válido, sem texto adicional
+* **NUNCA** adicione notas, explicações ou comentários
+* Se houver múltiplas arquivos, retorne um **ARRAY JSON** com um objeto para cada arquivo
+* Se houver uma única arquivo, retorne um **ARRAY JSON** com um **OBJETO JSON** único
+* **EXEMPLO PARA ARQUIVO ÚNICO:**
+[
+  {
+    "DOC_TYPE": "Peças",
+    "CNPJ_1": "46.621.491/0002-70",
+    "VALOR_TOTAL": "2.465,73",
+    "Chassi": "LGXCE4CC7S0023860",
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+  }
+]
+* **EXEMPLO PARA MÚLTIPLAS ARQUIVOS:**
+[
+  {
+    "DOC_TYPE": "Peças",
+    "CNPJ_1": "46.621.491/0002-70",
+    "VALOR_TOTAL": "2.465,73",
+    "Chassi": "LGXCE4CC7S0023860",
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+  },
+  {
+    "DOC_TYPE": "Serviço",
+    "CNPJ_1": "46.621.491/0002-70",
+    "VALOR_TOTAL": "1.023,40",
+    "Chassi": null,
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN250100042_01"
+  }
+]
+* **EXEMPLO INCORRETO:**
+"Here is the extracted information in JSON format: [ ... ] Note: ..."
+"""
+
 # Mandatory Keys Configuration
 MANDATORY_KEYS = ['DOC_TYPE', 'CNPJ_1', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']
 
@@ -106,7 +146,7 @@ e tem formato "BYDAMEBR" + 16-18 caracteres + "_" + 2 dígitos (ex: "BYDAMEBR001
 - Use null se não encontrar o valor
 - Não adicione explicações ou texto extra
 - Se DOC_TYPE for "Outros", defina outros campos como null
-"""
+""" + SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS
 
 
 USER_PROMPT += """

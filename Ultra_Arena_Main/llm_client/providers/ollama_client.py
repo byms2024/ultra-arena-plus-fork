@@ -80,6 +80,12 @@ class OllamaClient(BaseLLMClient):
             
             result = self._parse_ollama_response(response.message.content)
             
+            # Extract token counts from Ollama response
+            if hasattr(response, 'prompt_eval_count') and hasattr(response, 'eval_count'):
+                result['prompt_eval_count'] = response.prompt_eval_count
+                result['eval_count'] = response.eval_count
+                result['total_tokens'] = (response.prompt_eval_count or 0) + (response.eval_count or 0)
+            
             # Add file_name_llm mapping for proper file tracking
             if files and len(files) > 0:
                 # With the evolved filename embedding method, the LLM should return file_name_llm
@@ -182,7 +188,7 @@ REGRAS:
         return simplified_instructions + "\n\n" + document_content
     
     def _parse_ollama_response(self, content: str) -> Dict[str, Any]:
-        """Parse Ollama response, handling thinking tags and JSON extraction."""
+        """Parse Ollama response, handling basic cleaning and JSON extraction."""
         try:
             # Remove thinking tags if present
             if "<think>" in content and "</think>" in content:
@@ -208,7 +214,27 @@ REGRAS:
                 return {"error": "Empty response from Ollama"}
             
             # Try to parse as JSON
-            return json.loads(content)
+            parsed_json = json.loads(content)
+            
+            # Handle array responses - extract first element if it's an array
+            if isinstance(parsed_json, list):
+                if len(parsed_json) == 0:
+                    logging.warning("Received empty JSON array from Ollama")
+                    return {"error": "Empty JSON array from Ollama"}
+                elif len(parsed_json) == 1:
+                    # Single element array - extract the object
+                    parsed_json = parsed_json[0]
+                else:
+                    # Multiple elements - log warning but use first element
+                    logging.warning(f"Received JSON array with {len(parsed_json)} elements, using first element")
+                    parsed_json = parsed_json[0]
+            
+            # Ensure we have a dictionary
+            if not isinstance(parsed_json, dict):
+                logging.error(f"Expected JSON object, got {type(parsed_json)}")
+                return {"error": f"Expected JSON object, got {type(parsed_json)}"}
+            
+            return parsed_json
             
         except json.JSONDecodeError as e:
             logging.error(f"Failed to parse Ollama JSON response: {e}")
