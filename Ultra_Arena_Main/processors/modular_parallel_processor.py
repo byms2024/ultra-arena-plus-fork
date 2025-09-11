@@ -1860,8 +1860,8 @@ class ModularParallelProcessor:
         
         # Check total_files
         final_total_files = len(self.structured_output['file_stats'])
-        if accumulated_stats['total_files'] != final_total_files:
-            logging.error(f"❌ CRITICAL ERROR: total_files mismatch! Accumulated: {accumulated_stats['total_files']}, Final: {final_total_files}")
+        if accumulated_stats['total_processed_files'] != final_total_files:
+            logging.error(f"❌ CRITICAL ERROR: total_files mismatch! Accumulated: {accumulated_stats['total_processed_files']}, Final: {final_total_files}")
         else:
             logging.info(f"✅ total_files verification passed: {final_total_files}")
         
@@ -2131,7 +2131,7 @@ class ModularParallelProcessor:
         print("\n" + "="*60)
         print("📊 PROCESSING SUMMARY")
         print("="*60)
-        print(f"📁 Total files processed: {stats['total_files']}")
+        print(f"📁 Total files processed: {stats['total_processed_files']}")
         print(f"⏱️  Total processing time: {stats['total_wall_time_in_sec']:.2f}s")
         print(f"🔄 Files that needed retry: {retry_stats['num_files_may_need_retry']}")
         print(f"❌ Files failed after max retries: {retry_stats['num_file_failed_after_max_retries']}")
