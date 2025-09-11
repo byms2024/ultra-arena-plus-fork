@@ -20,6 +20,16 @@ class ConfigSource(str, Enum):
     DIRECT_TEST_OVERRIDE = "direct_test_override"
 
 
+class DesensitizationConfig(BaseModel):
+    """Static sensitive data configuration"""
+
+    desensitization_config: bool = Field(description="Whether the information will be desensitized", default=False)
+    sensitive_fields: list = Field(description="List of sensitive informatons")
+
+    class Config:
+        frozen = True
+
+
 class PromptConfig(BaseModel):
     """Configuration for LLM prompts with source tracking."""
     system_prompt: str = Field(default="", description="System prompt for LLM")
@@ -80,6 +90,7 @@ class ProcessingConfig(BaseModel):
 class ServerConfig(BaseModel):
     """Static server configuration assembled once at startup."""
     run_profile: str = Field(description="Profile name for this server instance")
+    desensitization: DesensitizationConfig = Field(description="Set how to handle sensitive information")
     prompts: PromptConfig = Field(default_factory=PromptConfig, description="Profile prompt configuration")
     api_keys: ApiKeyConfig = Field(default_factory=ApiKeyConfig, description="Profile API key configuration")
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig, description="Profile processing configuration")
@@ -121,3 +132,4 @@ class ConfigAssemblyResult(BaseModel):
     
     class Config:
         frozen = True
+
