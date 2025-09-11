@@ -40,6 +40,7 @@ class TestConfig:
     run_type: str = "evaluation"
     streaming: bool = False
     timeout: int = 30
+    desensitization: bool = True
 
 
 class AsyncTestRunner:
@@ -70,7 +71,8 @@ class AsyncTestRunner:
             'streaming': self.config.streaming,
             'max_cc_strategies': self.config.max_cc_strategies,
             'max_cc_filegroups': self.config.max_cc_filegroups,
-            'max_files_per_request': self.config.max_files_per_request
+            'max_files_per_request': self.config.max_files_per_request,
+            'desensitization': self.config.desensitization
         }
     
     def print_test_info(self):

@@ -18,7 +18,8 @@ def main():
         combo_name="single_strategy_text_first_google",
         file_name="1_file",
         max_wait_time=3000,
-        poll_interval=10
+        poll_interval=10,
+        desensitization= False
     )
     
     # Run the test

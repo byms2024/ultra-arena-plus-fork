@@ -56,7 +56,8 @@ class RestServerConfigAssembler(BaseConfigAssembler):
         
         try:
             # Load all configuration components
-            prompts = self._load_prompt_config()
+            desensitization = self._load_desensitization_config()
+            prompts = self._load_prompt_config(desensitization.desensitization_config)
             api_keys = self._load_api_key_config()
             processing = self._load_processing_config()
             default_combo_name = self._get_default_combo_name()
@@ -69,8 +70,14 @@ class RestServerConfigAssembler(BaseConfigAssembler):
                 api_keys=api_keys,
                 processing=processing,
                 default_combo_name=default_combo_name,
-                available_combos=available_combos
+                available_combos=available_combos,
+                desensitization=desensitization
             )
+
+            logger.info('='*50)
+            logger.info('PROMPTS:')
+            logger.info(prompts)
+            logger.info('='*50)
             
             # Cache the configuration
             self._cached_config = server_config

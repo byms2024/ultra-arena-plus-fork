@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from abc import ABC, abstractmethod
 
-from .config_models import ConfigSource, PromptConfig, ApiKeyConfig, ProcessingConfig
+from .config_models import ConfigSource, PromptConfig, ApiKeyConfig, ProcessingConfig, DesensitizationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class BaseConfigAssembler(ABC):
             logger.error(f"❌ Failed to load module {module_name} from {file_path}: {e}")
             return None
     
-    def _load_prompt_config(self) -> PromptConfig:
+    def _load_prompt_config(self, desensitization : bool) -> PromptConfig:
         """
         Load prompt configuration from profile.
         
@@ -77,14 +77,21 @@ class BaseConfigAssembler(ABC):
             logger.warning(f"⚠️ Using empty prompt config - could not load from {prompt_config_path}")
             return PromptConfig()
         
+        user_prompt_attr = 'USER_PROMPT'
+        json_format_attr = 'JSON_FORMAT_INSTRUCTIONS'
+
+        if not desensitization:
+            user_prompt_attr = 'SENSITIVE_USER_PROMPT'
+            json_format_attr = 'SENSITIVE_JSON_FORMAT_INSTRUCTIONS'
+        
         # Extract prompt values with source tracking
         prompts = {}
         source_info = {}
         
         prompt_fields = {
-            'system_prompt': 'SYSTEM_PROMPT',
+            'system_prompt': user_prompt_attr,
             'user_prompt': 'USER_PROMPT', 
-            'json_format_instructions': 'JSON_FORMAT_INSTRUCTIONS',
+            'json_format_instructions': json_format_attr,
             'mandatory_keys': 'MANDATORY_KEYS',
             'text_first_regex_criteria': 'TEXT_FIRST_REGEX_CRITERIA'
         }
@@ -315,6 +322,30 @@ class BaseConfigAssembler(ABC):
             logger.error(f"❌ Failed to load combo configuration: {e}")
             return []
     
+    def _load_desensitization_config(self) -> DesensitizationConfig:
+        """
+        Load desensitization configuration from profile.
+        
+        Returns:
+            ProcessingConfig: Loaded processing configuration
+        """
+    
+        desensitize_config_path = self._profile_dir / "profile_config.py"
+        module = self._load_module_from_path("profile_config", desensitize_config_path)
+        
+        if module is None:
+            logger.warning(f"⚠️ Using empty desensitization config - could not load from {desensitize_config_path}")
+            return DesensitizationConfig()
+        
+        # Extract prompt values with source tracking
+        desensitization = getattr(module, 'DESENSITIZATION')
+        field_list = getattr(module, 'SENSITIVE_INFO')
+        
+        return DesensitizationConfig(desensitization_config=desensitization, sensitive_fields=field_list)
+
+
+
+
     @abstractmethod
     def assemble_config(self) -> Any:
         """
