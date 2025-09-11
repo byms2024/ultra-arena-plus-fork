@@ -11,7 +11,7 @@ SYSTEM_PROMPT = """
 """
 
 # JSON Formatting Instructions (concatenated to main prompt)
-JSON_FORMAT_INSTRUCTIONS = """
+SENSITIVE_JSON_FORMAT_INSTRUCTIONS = """
     **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
     * **NUNCA** responda em texto livre ou narrativo
     * **SEMPRE** responda com JSON válido e bem formatado
@@ -40,6 +40,37 @@ JSON_FORMAT_INSTRUCTIONS = """
       ```
 """
 
+# JSON Formatting Instructions (concatenated to main prompt)
+JSON_FORMAT_INSTRUCTIONS = """
+    **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
+    * **NUNCA** responda em texto livre ou narrativo
+    * **SEMPRE** responda com JSON válido e bem formatado
+    * Se houver múltiplas arquivos, retorne um **ARRAY JSON** com um objeto para cada imagem
+    * Se houver uma única arquivo, retorne um **ARRAY JSON** com um **OBJETO JSON** único
+    * **EXEMPLO PARA MÚLTIPLAS IMAGENS:**
+      ```json
+      [
+        {
+          "DOC_TYPE": "Peças",
+          "CNPJ_1": "CNPJ_3AD8FA19805EC192",
+          "CNPJ_2": null,
+          "VALOR_TOTAL": "2.465,73",
+          "Chassi": "VIN_FB15C42CAE04A151",
+          "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+        },
+        {
+          "DOC_TYPE": "Serviço",
+          "CNPJ_1": "CNPJ_3AA2GA45310DH021",
+          "CNPJ_2": "CNPJ_4AR9GD83025MA531",
+          "VALOR_TOTAL": "1.023,40",
+          "Chassi": null,
+          "CLAIM_NUMBER": "BYDAMEBR0015WCN250100042_01"
+        }
+      ]
+      ```
+"""
+
+
 # Mandatory Keys Configuration
 MANDATORY_KEYS = ['DOC_TYPE', 'CNPJ_1', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']
 
@@ -51,10 +82,8 @@ TEXT_FIRST_REGEX_CRITERIA = {
     'CLAIM_NUMBER' : r'\bBYDAMEBR[A-Z0-9]{16,18}_\d{2}\b'
 }
 
-SENSITIVE_INFO = [ "CNPJ", "CPF", "VIN","CEP","CLAIM","NAME","ADDRESS"]
-
 # User prompt when sensitive informations will not be desensitized
-SENSITIZED_USER_PROMPT = """
+SENSITIVE_USER_PROMPT = """
     Esta deve ser um arquivo de um recibo de serviços ou peças vendidas para pós-venda de carros BYD no Brasil. Você é um especialista em extrair informações importantes dele.
 
     **⚠️ REGRA CRÍTICA: Extraia APENAS informações que estão REALMENTE presentes no arquivo. NÃO invente, copie ou alucine valores baseados em exemplos ou padrões.**
@@ -102,10 +131,10 @@ SENSITIZED_USER_PROMPT = """
     **VALORES NULOS:**
     Se uma informação não puder ser encontrada no documento, use `null` para esse campo. É melhor retornar `null` do que inventar um valor.  
 
-""" + JSON_FORMAT_INSTRUCTIONS
+""" + SENSITIVE_JSON_FORMAT_INSTRUCTIONS
 
 # User prompt when sensitive informations are desensitized
-DESENSITIZED_USER_PROMPT = """
+USER_PROMPT = """
     Esta deve ser um arquivo de um recibo de serviços ou peças vendidas para pós-venda de carros BYD no Brasil. Você é um especialista em extrair informações importantes dele.
 
     **⚠️ REGRA CRÍTICA: Extraia APENAS informações que estão REALMENTE presentes no arquivo. NÃO invente, copie ou alucine valores baseados em exemplos ou padrões.**
