@@ -66,7 +66,9 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                 text_content_sensitized = self._sensitize_text_content(text_content, Path(file_path).name)
                 if text_content_sensitized:
                     text_contents_sensitized.append(text_content_sensitized)
-                    print("=========text_content_sensitized===========\n")
+                    print("=====================Original=======================")
+                    print(text_content)
+                    print("=====================Sensitized=======================")
                     print(text_content_sensitized)
                 else:
                     text_contents_sensitized.append(text_content)
@@ -75,9 +77,6 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                 logging.info(f"✅ Successfully extracted text from: {Path(file_path).name} ({len(text_content)} characters)")
             else:
                 logging.error(f"❌ No text could be extracted from: {Path(file_path).name} using any available method")
-        
-        print("=========text_contents_sensitized===========\n")
-        print(text_contents_sensitized)
 
         if not text_contents:
             logging.error(f"❌ No text could be extracted for group {group_index}")
@@ -348,7 +347,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                 logging.warning(f"Attempt {attempt + 1} failed, retrying in {delay}s: {e}")
                 time.sleep(delay) 
     
-    def _sensitize_text_content(self, text_content: str, fileName: str) -> str:
+    def _sensitize_text_content(self, text_content: str, file_Name: str) -> str:
         from llm_strategies.data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
         
         aggregate_values: dict[str, set[str]] = {
@@ -359,13 +358,16 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             "CLAIM": set(),
             "NAME": set(),
             "ADDRESS": set(),
+            "PHONE": set(),
+            "ORG": set(),
+            "PLATE": set(),
         }
 
         file_text_cache: dict[Path, str] = {}
 
         vals = _collect_sensitive_values_from_text(text_content)
         
-        file_text_cache[fileName] = text_content
+        file_text_cache[file_Name] = text_content
 
         for k, s in vals.items():
             aggregate_values[k].update(s)
@@ -373,9 +375,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
 
         hashed_text = _hash_text_with_maps(text_content, per_label_maps)
-        print("=========hashed_text===========\n")
-        print(hashed_text)
-        return hashed_text
+
 
         try:
             import csv
@@ -387,3 +387,5 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                     writer.writerow([placeholder, original])
         except Exception:
             pass
+        
+        return hashed_text

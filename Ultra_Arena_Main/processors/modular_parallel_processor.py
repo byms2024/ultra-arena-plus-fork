@@ -601,6 +601,7 @@ class ModularParallelProcessor:
         logging.info("💾 Saving results...")
         self.save_results()
         
+
         # ✅ Clean up checkpoint after successful completion
         self._cleanup_checkpoint()
         
@@ -664,6 +665,7 @@ class ModularParallelProcessor:
                     if self.real_time_save:
                         logging.info(f"--- ✅ real_time_save: _process_groups_parallel() ---")
                         self._save_results_incrementally()
+
                     
                     # ✅ Save checkpoint after each group is processed
                     self.save_checkpoint()
@@ -2108,6 +2110,11 @@ class ModularParallelProcessor:
             with open(self.output_file, 'w', encoding='utf-8') as f:
                 json.dump(self.structured_output, f, indent=2, ensure_ascii=False)
             logging.debug(f"💾 Incremental save completed: {self.output_file}")
+            from llm_strategies.data_sensitization import soft_resensitize_output
+            try:
+                soft_resensitize_output(self.output_file, self.csv_output_file)
+            except Exception as e:
+                logging.error(f"❌ Error resensitizing output: {e}")
         except Exception as e:
             logging.error(f"❌ Failed to save results incrementally: {e}")
     
@@ -2118,6 +2125,12 @@ class ModularParallelProcessor:
                 json.dump(self.structured_output, f, indent=2, ensure_ascii=False)
             logging.info(f"💾 Results saved to {self.output_file}")
             
+            from llm_strategies.data_sensitization import resensitize_output
+            try:
+                resensitize_output(self.output_file, self.csv_output_file)
+            except Exception as e:
+                logging.error(f"❌ Error resensitizing output: {e}")
+
             # Generate error CSV file if there are benchmark errors
             self.generate_error_csv()
         except Exception as e:

@@ -97,11 +97,58 @@ MONEY_REGEX: re.Pattern[str] = re.compile(
 CPF_REGEX: re.Pattern[str] = re.compile(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)|(?<!\d)\d{11}(?!\d)")
 CEP_REGEX: re.Pattern[str] = re.compile(r"(?<!\d)\d{5}-?\d{3}(?!\d)")
 
+# Phone number patterns (Brazil + generic): supports +55, area code, 8-9 digits, and 0800
+PHONE_REGEXES: list[re.Pattern[str]] = [
+    re.compile(r"(?<!\d)(?:\+?55[\s.-]?)?(?:\(?\d{2}\)?[\s.-]?)?(?:9?\d{4}[\s.-]?\d{4})(?!\d)"),
+    re.compile(r"(?<!\d)0?800[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)")
+]
+
+# Brazilian vehicle plates: old (LLL-NNNN) and Mercosur (LLLNLNN). Optional UF suffix like -DF
+PLATE_REGEXES: list[re.Pattern[str]] = [
+    re.compile(r"(?<![A-Z0-9])[A-Z]{3}[- ]?\d{4}(?:-[A-Z]{1,2})?(?![A-Z0-9])"),
+    re.compile(r"(?<![A-Z0-9])[A-Z]{3}\d[A-Z]\d{2}(?:-[A-Z]{1,2})?(?![A-Z0-9])"),
+]
+
 # A loose address heuristic: sequences containing street keywords
 ADDRESS_KEYWORDS = [
     "rua", "avenida", "av.", "rodovia", "estrada", "alameda", "travessa", "praça", "praca",
     "bairro", "bloco", "quadra", "lote", "apto", "apartamento", "casa", "nº", "numero", "n°", "cep"
 ]
+
+# Typical Brazilian first names (normalized, no accents, lowercase)
+TYPICAL_BR_FIRST_NAMES: set[str] = {
+    "maria","ana","joao","jose","carlos","paulo","pedro","lucas","gabriel","marcos",
+    "luiz","felipe","rafael","bruno","gustavo","rodrigo","thiago","diego","matheus",
+    "eduardo","andre","fernando","daniel","marcelo","vinicius","leonardo","ricardo","hugo",
+    "fabio","caio","vitor","victor","renato","sergio","rogerio","alessandro","antonio",
+    "juliana","camila","fernanda","patricia","aline","carla","mariana","tatiana","bianca",
+    "leticia","bruna","gabriela","amanda","beatriz","carolina","renata","debora","priscila",
+    "luana","luciana","simone","paula","silvia","karina","claudia","natalia","sabrina"
+}
+
+_NAME_CONNECTORS: set[str] = {"de","da","do","dos","das","e","d'"}
+
+def _strip_accents(s: str) -> str:
+    try:
+        import unicodedata
+        return "".join(ch for ch in unicodedata.normalize("NFD", s) if unicodedata.category(ch) != 'Mn')
+    except Exception:
+        return s
+
+def _is_typical_br_person_name(name: str) -> bool:
+    tokens_raw = re.findall(r"[A-Za-zÁÂÃÀÉÊÍÓÔÕÚÇáâãàéêíóôõúç]+", name or "")
+    if not tokens_raw:
+        return False
+    tokens_norm = []
+    for t in tokens_raw:
+        t_norm = _strip_accents(t).lower()
+        if t_norm in _NAME_CONNECTORS:
+            continue
+        tokens_norm.append(t_norm)
+    if not tokens_norm:
+        return False
+    # Require the first token to be a common given name
+    return tokens_norm[0] in TYPICAL_BR_FIRST_NAMES
 
 # ==============================================================================
 
@@ -129,6 +176,30 @@ def _find_poppler_bin() -> Optional[str]:
             if os.path.exists(os.path.join(candidate, "pdftoppm.exe")) or os.path.exists(os.path.join(candidate, "pdftocairo.exe")):
                 return candidate
     return None
+# ======================================================================
+# ReverseMapStore singleton: holds placeholder->original across the run
+class ReverseMapStore:
+    _instance: "ReverseMapStore" | None = None
+
+    def __new__(cls) -> "ReverseMapStore":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._map: dict[str, str] = {}
+            cls._instance._sensitizationconfig = bool
+        return cls._instance
+
+    def add_entries(self, entries: Dict[str, str]) -> None:
+        if not entries:
+            return
+        self._map.update(entries)
+
+    def get_map(self) -> Dict[str, str]:
+        return dict(self._map)
+
+    def clear(self) -> None:
+        self._map.clear()
+
+
 
 
 def _find_tesseract_cmd() -> Optional[str]:
@@ -191,9 +262,18 @@ def _build_text_hash_maps(values_by_label: dict[str, set[str]]) -> tuple[dict[st
         if not vals:
             per_label_maps[label] = {}
             continue
+        # Do not hash organizations
+        if label == "ORG":
+            per_label_maps[label] = {}
+            continue
         to_hash, to_plain = reversible_hash_values(sorted(vals), label)
         per_label_maps[label] = to_hash
         reverse_map.update(to_plain)
+    # Populate global store with this batch's reverse map
+    try:
+        ReverseMapStore().add_entries(reverse_map)
+    except Exception:
+        pass
     return per_label_maps, reverse_map
 
 def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -> str:
@@ -228,13 +308,16 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
         "CLAIM": set(),
         "NAME": set(),
         "ADDRESS": set(),
+        "PHONE": set(),
+        "ORG": set(),
+        "PLATE": set(),
     }
     t = text or ""
     for pat in CNPJ_PATTERNS:
         for m in pat.finditer(t):
             digits = re.sub(r"\D", "", m.group(0))
-            if digits in CNPJ_BANNED_DIGITS:
-                continue
+            # if digits in CNPJ_BANNED_DIGITS:
+            #     continue
             values["CNPJ"].add(m.group(0))
     for m in CPF_REGEX.finditer(t):
         values["CPF"].add(m.group(0))
@@ -244,23 +327,38 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
         values["VIN"].add(m.group(0))
     for m in CLAIM_NO_REGEX.finditer(t):
         values["CLAIM"].add(m.group(0))
+    # phones
+    for pat in PHONE_REGEXES:
+        for m in pat.finditer(t):
+            values["PHONE"].add(m.group(0))
+    # vehicle plates
+    for pat in PLATE_REGEXES:
+        for m in pat.finditer(t):
+            values["PLATE"].add(m.group(0))
     # address-like lines
     # for line in t.splitlines():
     #     low = line.lower()
     #     if any(k in low for k in ADDRESS_KEYWORDS) and len(line) >= 10:
     #         values["ADDRESS"].add(line)
-    # names via spaCy or heuristic
+    # names via spaCy or heuristic, filtered to typical BR person names
     if _spacy_nlp is not None and t:
         try:
             doc = _spacy_nlp(t)
-            for ent in doc.ents:
-                if ent.label_ == "PER":
-                    values["NAME"].add(ent.text)
+            # for ent in doc.ents:
+                # if ent.label_ == "PER":
+                #     if _is_typical_br_person_name(ent.text):
+                #         values["NAME"].add(ent.text)
+                # elif ent.label_ == "ORG":
+                #     values["ORG"].add(ent.text)
         except Exception:
             pass
     else:
         for s, e, _ in _heuristic_name_spans(t):
-            values["NAME"].add(t[s:e])
+            cand = t[s:e]
+        #     if _is_typical_br_person_name(cand):
+        #         values["NAME"].add(cand)
+        # for s, e, _ in _heuristic_org_spans(t):
+        #     values["ORG"].add(t[s:e])
     return values
 
 
@@ -290,6 +388,22 @@ def _heuristic_name_spans(text: str) -> list[tuple[int, int, str]]:
             spans.append((start, start + len(val), "NAME"))
     return spans
 
+def _heuristic_org_spans(text: str) -> list[tuple[int, int, str]]:
+    spans: list[tuple[int, int, str]] = []
+    # Organization-like names with common suffixes and keywords
+    name_token = r"[A-ZÁÂÃÀÉÊÍÓÔÕÚÇ][\w&\.-ÁÂÃÀÉÊÍÓÔÕÚÇaáâãàéêíóôõúç]{2,}"
+    connector = r"(?:\s+(?:de|da|do|dos|das|e|d'))?"
+    suffix = r"(?:S\.?A\.?|S/\s*A|LTDA|ME|EPP|EIRELI|INC|LLC|GMBH|S\.?R\.?L\.?)"
+    pattern_suffix = re.compile(rf"\b{name_token}(?:{connector}\s+{name_token}){{0,6}}\s+{suffix}\b", re.IGNORECASE)
+    for m in pattern_suffix.finditer(text):
+        spans.append((m.start(), m.end(), "ORG"))
+    # Keywords for public bodies/organizations without suffixes
+    keywords = r"(?:Prefeitura|Governo|Minist[eé]rio|Secretaria|Universidade|Banco|Fundação|Fundacao|Instituto|Companhia|Empresa|C[âa]mara|Assembleia|Tribunal)"
+    pattern_kw = re.compile(rf"\b{keywords}\s+{name_token}(?:{connector}\s+{name_token}){{0,6}}\b", re.IGNORECASE)
+    for m in pattern_kw.finditer(text):
+        spans.append((m.start(), m.end(), "ORG"))
+    return spans
+
 def _is_word_boundary(text: str, start: int, end: int) -> bool:
     try:
         before_ok = start <= 0 or not (text[start - 1].isalnum())
@@ -298,6 +412,42 @@ def _is_word_boundary(text: str, start: int, end: int) -> bool:
     except Exception:
         return True
 
+
+def _find_sensitive_custom_patterns(text: str) -> list[tuple[int, int, str]]:
+    spans: list[tuple[int, int, str]] = []
+    if not text:
+        return spans
+    # CNPJ patterns (multiple formats)
+    for pat in CNPJ_PATTERNS:
+        for m in pat.finditer(text):
+            try:
+                digits = re.sub(r"\D", "", m.group(0))
+                # if digits in CNPJ_BANNED_DIGITS:
+                #     continue
+            except Exception:
+                pass
+            spans.append((m.start(), m.end(), "CNPJ"))
+    # CPF
+    for m in CPF_REGEX.finditer(text):
+        spans.append((m.start(), m.end(), "CPF"))
+    # CEP
+    for m in CEP_REGEX.finditer(text):
+        spans.append((m.start(), m.end(), "CEP"))
+    # VIN
+    for m in VIN_REGEX.finditer(text):
+        spans.append((m.start(), m.end(), "VIN"))
+    # CLAIM
+    for m in CLAIM_NO_REGEX.finditer(text):
+        spans.append((m.start(), m.end(), "CLAIM"))
+    # PHONE
+    for pat in PHONE_REGEXES:
+        for m in pat.finditer(text):
+            spans.append((m.start(), m.end(), "PHONE"))
+    # PLATE
+    for pat in PLATE_REGEXES:
+        for m in pat.finditer(text):
+            spans.append((m.start(), m.end(), "PLATE"))
+    return spans
 
 def _filter_spans_for_redaction(
     text: str,
@@ -381,18 +531,19 @@ def redact_pdf_text(
             text_page = page.get_text("text")
         except Exception:
             text_page = ""
-        spans = _find_sensitive_custom_patterns(text_page)
+        # Collect spans from custom patterns: IDs, money, codes, etc.
+        spans = []
         if enable_heuristic_names:
             spans.extend(_heuristic_name_spans(text_page or ""))
         # Extend with spaCy NER for names/organizations/locations
         if _spacy_nlp is not None and text_page:
             try:
                 nlp_doc = _spacy_nlp(text_page)
-                for ent in nlp_doc.ents:
+                # for ent in nlp_doc.ents:
                     # Portuguese models commonly use PER, LOC, ORG, MISC
-                    if ent.label_ in {"PER", "LOC", "ORG", "MISC"}:
-                        label = "NAME" if ent.label_ == "PER" else ent.label_
-                        spans.append((ent.start_char, ent.end_char, label))
+                    # if ent.label_ in {"PER", "LOC", "ORG", "MISC"}:
+                    #     label = "NAME" if ent.label_ == "PER" else ent.label_
+                    #     spans.append((ent.start_char, ent.end_char, label))
             except Exception:
                 pass
         elif use_spacy_only_for_names:
@@ -528,13 +679,16 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
         "CLAIM": set(),
         "NAME": set(),
         "ADDRESS": set(),
+        "PHONE": set(),
+        "ORG": set(),
+        "PLATE": set(),
     }
     t = text or ""
     for pat in CNPJ_PATTERNS:
         for m in pat.finditer(t):
             digits = re.sub(r"\D", "", m.group(0))
-            if digits in CNPJ_BANNED_DIGITS:
-                continue
+            # if digits in CNPJ_BANNED_DIGITS:
+            #     continue
             values["CNPJ"].add(m.group(0))
     for m in CPF_REGEX.finditer(t):
         values["CPF"].add(m.group(0))
@@ -544,6 +698,14 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
         values["VIN"].add(m.group(0))
     for m in CLAIM_NO_REGEX.finditer(t):
         values["CLAIM"].add(m.group(0))
+    # phones
+    for pat in PHONE_REGEXES:
+        for m in pat.finditer(t):
+            values["PHONE"].add(m.group(0))
+    # vehicle plates
+    for pat in PLATE_REGEXES:
+        for m in pat.finditer(t):
+            values["PLATE"].add(m.group(0))
     # address-like lines
     # for line in t.splitlines():
     #     low = line.lower()
@@ -553,14 +715,18 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
     if _spacy_nlp is not None and t:
         try:
             doc = _spacy_nlp(t)
-            for ent in doc.ents:
-                if ent.label_ == "PER":
-                    values["NAME"].add(ent.text)
+            # for ent in doc.ents:
+            #     if ent.label_ == "PER":
+            #         values["NAME"].add(ent.text)
+            #     elif ent.label_ == "ORG":
+            #         values["ORG"].add(ent.text)
         except Exception:
             pass
     else:
-        for s, e, _ in _heuristic_name_spans(t):
-            values["NAME"].add(t[s:e])
+        # for s, e, _ in _heuristic_name_spans(t):
+        #     values["NAME"].add(t[s:e])
+        for s, e, _ in _heuristic_org_spans(t):
+            values["ORG"].add(t[s:e])
     return values
 
 
@@ -572,9 +738,18 @@ def _build_text_hash_maps(values_by_label: dict[str, set[str]]) -> tuple[dict[st
         if not vals:
             per_label_maps[label] = {}
             continue
+        # Do not hash organizations
+        if label == "ORG":
+            per_label_maps[label] = {}
+            continue
         to_hash, to_plain = reversible_hash_values(sorted(vals), label)
         per_label_maps[label] = to_hash
         reverse_map.update(to_plain)
+    # Populate global store with this batch's reverse map
+    try:
+        ReverseMapStore().add_entries(reverse_map)
+    except Exception:
+        pass
     return per_label_maps, reverse_map
 
 
@@ -583,8 +758,6 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
         return text
     # Build a unified map: plain -> placeholder
     unified: dict[str, str] = {}
-    print("=========per_label_maps===========\n")
-    print(per_label_maps)
     for m in per_label_maps.values():
         unified.update(m)
     if not unified:
@@ -592,8 +765,7 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
     # Replace longer strings first to avoid partial overlaps
     sorted_items = sorted(unified.items(), key=lambda kv: len(kv[0]), reverse=True)
     out = text
-    print("=========out===========\n")
-    print(out)
+
     for plain, placeholder in sorted_items:
         if not plain:
             continue
@@ -601,8 +773,7 @@ def _hash_text_with_maps(text: str, per_label_maps: dict[str, dict[str, str]]) -
             out = out.replace(plain, placeholder)
         except Exception:
             continue
-    print("=========out2===========\n")
-    print(out)
+
     return out
 
 def extract_text_from_pdf(file_path: Path) -> str:
@@ -691,6 +862,9 @@ def redact_and_export_texts(
         "CLAIM": set(),
         "NAME": set(),
         "ADDRESS": set(),
+        "PHONE": set(),
+        "ORG": set(),
+        "PLATE": set(),
     }
 
     file_text_cache: dict[Path, str] = {}
@@ -747,3 +921,180 @@ def redact_and_export_texts(
     except Exception:
         return {"reverse_map_csv": ""}
 
+
+def _load_reverse_map_for_files(files: list[Path]) -> dict[str, str]:
+    """Search for reverse_map CSVs near the given files and load them into a dict."""
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add_candidate(p: Path) -> None:
+        if p.exists() and p.is_file() and p not in seen:
+            seen.add(p)
+            candidates.append(p)
+
+    # Scan same and parent directories for reverse_map files
+    for f in files:
+        try:
+            start = f.parent
+            # Check up to 5 levels up
+            steps = [start] + list(start.parents)[:5]
+            for d in steps:
+                _add_candidate(d / "reverse_map.csv")
+                # Also accept variations like reverse_map_2025-*.csv
+                try:
+                    for g in d.glob("reverse_map*.csv"):
+                        _add_candidate(g)
+                except Exception:
+                    pass
+        except Exception:
+            continue
+
+    # Sort by most recent first
+    candidates.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+
+    reverse_map: dict[str, str] = {}
+    import csv
+    for csv_path in candidates:
+        try:
+            with csv_path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                for idx, row in enumerate(reader):
+                    if not row:
+                        continue
+                    if idx == 0 and len(row) >= 2 and row[0].lower() == "placeholder":
+                        # header row
+                        continue
+                    if len(row) >= 2:
+                        placeholder = (row[0] or "").strip()
+                        original = (row[1] or "").strip()
+                        if placeholder and original:
+                            reverse_map[placeholder] = original
+        except Exception:
+            continue
+    return reverse_map
+
+
+def resensitize_output(
+    hashed_text_file_a: str | Path,
+    hashed_text_file_b: str | Path,
+) -> None:
+    """Resensitize two hashed text files by replacing placeholders using nearby reverse_map CSVs.
+
+    The function looks for reverse_map CSV files in the same directories as the inputs
+    (and parent directories), merges them, and applies replacements back to both files.
+    """
+    files = [Path(hashed_text_file_a).expanduser().resolve(), Path(hashed_text_file_b).expanduser().resolve()]
+    files = [f for f in files if f.exists() and f.is_file()]
+    if not files:
+        return
+
+    # Prefer in-memory store; fallback to nearby CSV discovery
+    mem_map = {}
+    try:
+        mem_map = ReverseMapStore().get_map()
+    except Exception:
+        mem_map = {}
+    file_map = _load_reverse_map_for_files(files)
+    reverse_map = {**file_map, **mem_map}
+    if not reverse_map:
+        return
+
+    # Replace longer placeholders first to avoid partial overlaps
+    sorted_items = sorted(reverse_map.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+    for file_path in files:
+        # Read file content
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except Exception:
+            try:
+                content = file_path.read_text(encoding="latin-1", errors="ignore")
+            except Exception:
+                continue
+        
+        print("=========content===========\n")
+        print(content)
+        
+        for placeholder, original in sorted_items:
+            if not placeholder:
+                continue
+            try:
+                content = content.replace(placeholder, original)
+            except Exception:
+                continue
+
+        print("=========content after===========\n")
+        print(content)
+
+        # Write back
+        try:
+            file_path.write_text(content, encoding="utf-8")
+        except Exception:
+            try:
+                file_path.write_text(content, encoding="latin-1", errors="ignore")
+            except Exception:
+                continue
+
+    
+    # Clear the in-memory map after using it
+    try:
+        ReverseMapStore().clear()
+    except Exception:
+        pass
+
+
+def soft_resensitize_output(
+    hashed_text_file_a: str | Path,
+    hashed_text_file_b: str | Path,
+) -> None:
+    """Resensitize two hashed text files without clearing the in-memory reverse map.
+
+    Uses the in-memory ReverseMapStore if available, falling back to discovering
+    reverse_map*.csv files near the provided files. Applies placeholder->original
+    replacements to both files, but keeps the ReverseMapStore intact for further use.
+    """
+    files = [Path(hashed_text_file_a).expanduser().resolve(), Path(hashed_text_file_b).expanduser().resolve()]
+    files = [f for f in files if f.exists() and f.is_file()]
+    if not files:
+        return
+
+    # Prefer in-memory store; fallback to nearby CSV discovery
+    mem_map = {}
+    try:
+        mem_map = ReverseMapStore().get_map()
+    except Exception:
+        mem_map = {}
+    file_map = _load_reverse_map_for_files(files)
+    reverse_map = {**file_map, **mem_map}
+    if not reverse_map:
+        return
+
+    # Replace longer placeholders first to avoid partial overlaps
+    sorted_items = sorted(reverse_map.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+    for file_path in files:
+        # Read file content
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except Exception:
+            try:
+                content = file_path.read_text(encoding="latin-1", errors="ignore")
+            except Exception:
+                continue
+
+        for placeholder, original in sorted_items:
+            if not placeholder:
+                continue
+            try:
+                content = content.replace(placeholder, original)
+            except Exception:
+                continue
+
+        # Write back
+        try:
+            file_path.write_text(content, encoding="utf-8")
+        except Exception:
+            try:
+                file_path.write_text(content, encoding="latin-1", errors="ignore")
+            except Exception:
+                continue
