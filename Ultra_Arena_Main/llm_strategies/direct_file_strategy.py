@@ -37,7 +37,7 @@ class DirectFileProcessingStrategy(BaseProcessingStrategy):
             self.max_retries = config["file_direct_max_retry"]
             logging.info(f"🌐 Direct file strategy using hybrid retry limit: {self.max_retries}")
     
-    def process_file_group(self, *, file_group: List[str], group_index: int, 
+    def process_file_group(self, *, config_manager, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str, 
                           strategy_type: str = "direct_file", file_path_mapper=None) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files by sending them directly to LLM."""
