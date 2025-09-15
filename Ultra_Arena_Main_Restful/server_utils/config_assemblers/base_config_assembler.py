@@ -358,4 +358,3 @@ class BaseConfigAssembler(ABC):
             Any: Assembled configuration object
         """
         pass
->>>>>>> 132896d6d9e6761bc316373de424c4a611d570f1
