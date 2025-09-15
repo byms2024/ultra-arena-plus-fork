@@ -40,7 +40,6 @@ SENSITIVE_JSON_FORMAT_INSTRUCTIONS = """
       ```
 """
 
-<<<<<<< HEAD
 # JSON Formatting Instructions (concatenated to main prompt)
 JSON_FORMAT_INSTRUCTIONS = """
     **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
@@ -72,7 +71,6 @@ JSON_FORMAT_INSTRUCTIONS = """
 """
 
 
-=======
 # Simplified JSON Formatting Instructions for Ollama models
 SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
 **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
@@ -113,7 +111,6 @@ SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
 "Here is the extracted information in JSON format: [ ... ] Note: ..."
 """
 
->>>>>>> main
 # Mandatory Keys Configuration
 MANDATORY_KEYS = ['DOC_TYPE', 'CNPJ_1', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']
 
@@ -180,18 +177,6 @@ SENSITIVE_USER_PROMPT = """
 """ + SENSITIVE_JSON_FORMAT_INSTRUCTIONS
 
 # User prompt when sensitive informations are desensitized
-USER_PROMPT = """
-    Esta deve ser um arquivo de um recibo de serviços ou peças vendidas para pós-venda de carros BYD no Brasil. Você é um especialista em extrair informações importantes dele.
-
-    **⚠️ REGRA CRÍTICA: Extraia APENAS informações que estão REALMENTE presentes no arquivo. NÃO invente, copie ou alucine valores baseados em exemplos ou padrões.**
-
-    Precisamos **extrair informações cruciais** e formatá-las em um objeto JSON.
-
-    **As seguintes chaves DEVEM estar no NÍVEL MAIS ALTO do objeto JSON de saída:**
-    **['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']**
-    Para cada uma dessas chaves, extraia o valor único correspondente mas não invente o valor se ele não puder ser encontrado.
-"""
-
 # Simplified User Prompt for Ollama (enhanced with specific extraction rules)
 SIMPLIFIED_USER_PROMPT = """
 Esta deve ser um arquivo de um recibo de serviços ou peças vendidas para pós-venda de carros BYD no Brasil. 
@@ -234,7 +219,16 @@ e tem formato "BYDAMEBR" + 16-18 caracteres + "_" + 2 dígitos (ex: "BYDAMEBR001
 """ + SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS
 
 
-USER_PROMPT += """
+USER_PROMPT = """
+     Esta deve ser um arquivo de um recibo de serviços ou peças vendidas para pós-venda de carros BYD no Brasil. Você é um especialista em extrair informações importantes dele.
+
+    **⚠️ REGRA CRÍTICA: Extraia APENAS informações que estão REALMENTE presentes no arquivo. NÃO invente, copie ou alucine valores baseados em exemplos ou padrões.**
+
+    Precisamos **extrair informações cruciais** e formatá-las em um objeto JSON.
+
+    **As seguintes chaves DEVEM estar no NÍVEL MAIS ALTO do objeto JSON de saída:**
+    **['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']**
+    Para cada uma dessas chaves, extraia o valor único correspondente mas não invente o valor se ele não puder ser encontrado.
 
     ### **Instruções Específicas para Extração:**
         
