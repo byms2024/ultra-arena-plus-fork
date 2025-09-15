@@ -77,6 +77,7 @@ class BaseConfigAssembler(ABC):
             logger.warning(f"⚠️ Using empty prompt config - could not load from {prompt_config_path}")
             return PromptConfig()
         
+        system_prompt_attr = 'SYSTEM_PROMPT'
         user_prompt_attr = 'USER_PROMPT'
         json_format_attr = 'JSON_FORMAT_INSTRUCTIONS'
 
@@ -89,9 +90,8 @@ class BaseConfigAssembler(ABC):
         source_info = {}
         
         prompt_fields = {
-            'system_prompt': user_prompt_attr,
-            'user_prompt': 'USER_PROMPT', 
-<<<<<<< HEAD
+            'system_prompt': system_prompt_attr,
+            'user_prompt': user_prompt_attr, 
             'json_format_instructions': json_format_attr,
 =======
             'simplified_user_prompt': 'SIMPLIFIED_USER_PROMPT',

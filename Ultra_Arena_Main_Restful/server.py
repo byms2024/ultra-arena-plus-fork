@@ -178,7 +178,8 @@ def process_combo_async():
         "streaming": false,  // optional, defaults to config DEFAULT_STREAMING
         "max_cc_strategies": 3,  // optional, defaults to config DEFAULT_MAX_CC_STRATEGIES
         "max_cc_filegroups": 5,  // optional, defaults to config DEFAULT_MAX_CC_FILEGROUPS
-        "max_files_per_request": 10  // optional, defaults to config DEFAULT_MAX_FILES_PER_REQUEST
+        "max_files_per_request": 10  // optional, defaults to config DEFAULT_MAX_FILES_PER_REQUEST,
+        "desensitization": True
     }
     
     Returns:
@@ -196,6 +197,8 @@ def process_combo_async():
         config_defaults = config_manager.get_config_defaults()
         validator = RequestValidator(config_defaults)
         validation_result = validator.validate_combo_request(data)
+
+        
         
         if not validation_result.is_valid:
             error_msg = "; ".join(validation_result.errors)

@@ -73,11 +73,6 @@ class RestServerConfigAssembler(BaseConfigAssembler):
                 available_combos=available_combos,
                 desensitization=desensitization
             )
-
-            logger.info('='*50)
-            logger.info('PROMPTS:')
-            logger.info(prompts)
-            logger.info('='*50)
             
             # Cache the configuration
             self._cached_config = server_config

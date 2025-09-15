@@ -159,7 +159,8 @@ class AsyncTaskManager:
                     input_pdf_dir_path=request_data.get('input_pdf_dir_path'),
                     pdf_file_paths=request_data.get('pdf_file_paths', []),
                     output_dir=request_data.get('output_dir'),
-                    benchmark_file_path=Path(request_data.get('benchmark_file_path')) if request_data.get('benchmark_file_path') else None
+                    benchmark_file_path=Path(request_data.get('benchmark_file_path')) if request_data.get('benchmark_file_path') else None,
+                    config_manager = config_manager
                 )
                 logger.info(f"🔍 DEBUG: run_combo_processing completed with result_code: {result_code}")
             except Exception as e:
