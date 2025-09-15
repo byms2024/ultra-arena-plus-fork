@@ -250,7 +250,7 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
         raise ValueError(f"Unsupported strategy type: {strategy_type}")
 
 
-def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[Path] = [], 
+def run_file_processing_full(*,config_manager, input_pdf_dir_path: Path, pdf_file_paths: List[Path] = [], 
                        strategy_type: str = STRATEGY_DIRECT_FILE, mode: str = MODE_PARALLEL,
                        system_prompt: Optional[str] = None, user_prompt: Optional[str] = None,
                        max_workers: int = 5, output_file: str = "modular_results.json",
@@ -286,8 +286,8 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
     logging.info(f"   - PDF File Paths provided: {len(pdf_file_paths)}")
     logging.info(f"   - Max Workers: {max_workers}")
     logging.info(f"   - Output File: {output_file}")
-    logging.info(f"   - System Prompt provided: {system_prompt is not None}")
-    logging.info(f"   - User Prompt provided: {user_prompt is not None}")
+    logging.info(f"   - System Prompt provided: {system_prompt}")
+    logging.info(f"   - User Prompt provided: {user_prompt}")
     
     # Setup logging if not already configured
     from logging_utils import setup_logging as setup_enhanced_logging
@@ -364,6 +364,7 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
         # Create processor
         logging.info(f"🔧 Creating ModularParallelProcessor...")
         processor = ModularParallelProcessor(
+            config_manager = config_manager,
             config=config,
             strategy_type=strategy_type,
             mode=mode,
@@ -399,7 +400,7 @@ def run_file_processing_full(*, input_pdf_dir_path: Path, pdf_file_paths: List[P
         raise
 
 
-def run_file_processing(*, input_pdf_dir_path: Path, pdf_file_paths: List[Path] = [],
+def run_file_processing(*,config_manager, input_pdf_dir_path: Path, pdf_file_paths: List[Path] = [],
                       strategy_type: str = DEFAULT_STRATEGY_TYPE, mode: str = DEFAULT_MODE,
                       system_prompt: Optional[str] = None, user_prompt: Optional[str] = None,
                       max_workers: int = DEFAULT_MAX_CC_FILEGROUPS, output_file: str = DEFAULT_OUTPUT_FILE,
@@ -444,7 +445,8 @@ def run_file_processing(*, input_pdf_dir_path: Path, pdf_file_paths: List[Path] 
         benchmark_eval_mode=benchmark_eval_mode,
         streaming=streaming,
         max_files_per_request=max_files_per_request,
-        benchmark_file_path=benchmark_file_path
+        benchmark_file_path=benchmark_file_path,
+        config_manager=config_manager
     )
 
 
@@ -569,7 +571,7 @@ def resolve_combo_processing_params(combo_name: str = None,
 
 
 
-def _run_combo_processing_parallel(benchmark_eval_mode: bool = False, combo_name: str = None, 
+def _run_combo_processing_parallel(config_manager, benchmark_eval_mode: bool = False, combo_name: str = None, 
                                 streaming: bool = False, max_cc_strategies: int = 3, max_cc_filegroups: int = 5,
                                 max_files_per_request: int = None,
                                 input_pdf_dir_path: Path = None,
@@ -716,7 +718,8 @@ def _run_combo_processing_parallel(benchmark_eval_mode: bool = False, combo_name
                             max_files_per_request=max_files_per_request,
                             json_filename=json_filename,
                             csv_filename=csv_filename,
-                            benchmark_file_path=benchmark_file_path
+                            benchmark_file_path=benchmark_file_path,
+                            config_manager = config_manager
                         )
                         futures.append((group_name, future))
                     
@@ -758,7 +761,7 @@ def _group_strategies_by_provider(parameter_group_names: List[str], param_grps: 
     return provider_groups
 
 
-def _process_single_strategy(group_name: str, group_params: Dict, combo_name: str, 
+def _process_single_strategy(config_manager, group_name: str, group_params: Dict, combo_name: str, 
                            combo_json_dir: Path, combo_csv_dir: Path, input_files_path: str,
                            pdf_file_paths: List[Path], benchmark_eval_mode: bool, streaming: bool, 
                            max_cc_filegroups: int = 5, max_files_per_request: int = None,
@@ -767,7 +770,7 @@ def _process_single_strategy(group_name: str, group_params: Dict, combo_name: st
     """Process a single strategy within a combo run."""
     logging.info(f"⚙️ Processing parameter group: {group_name}")
     logging.info(f"📋 Parameters: {group_params}")
-    
+
     # Extract parameters
     strategy = group_params.get("strategy", STRATEGY_DIRECT_FILE)
     mode = group_params.get("mode", MODE_PARALLEL)
@@ -804,19 +807,20 @@ def _process_single_strategy(group_name: str, group_params: Dict, combo_name: st
         benchmark_eval_mode=benchmark_eval_mode,
         streaming=streaming,
         max_files_per_request=max_files_per_request,
-        benchmark_file_path=benchmark_file_path
+        benchmark_file_path=benchmark_file_path,
+        config_manager=config_manager
     )
     
     return results
 
 
-def run_combo_processing(benchmark_eval_mode: bool = False, combo_name: str = None, 
+def run_combo_processing(config_manager, benchmark_eval_mode: bool = False, combo_name: str = None, 
                         streaming: bool = False, max_cc_strategies: int = 3, max_cc_filegroups: int = 5,
                         max_files_per_request: int = None,
                         input_pdf_dir_path: Path = None,
                         pdf_file_paths: List[Path] = [],
                         output_dir: str = None,
-                        benchmark_file_path: Path = None) -> int:
+                        benchmark_file_path: Path = None,) -> int:
     """Run combination processing using centralized configuration."""
     
     # Validate parameters using the new validator
@@ -869,7 +873,8 @@ def run_combo_processing(benchmark_eval_mode: bool = False, combo_name: str = No
         input_pdf_dir_path=validated_params['input_pdf_dir_path'],
         pdf_file_paths=validated_params['pdf_file_paths'],
         output_dir=validated_params['output_dir'],
-        benchmark_file_path=validated_params['benchmark_file_path']
+        benchmark_file_path=validated_params['benchmark_file_path'],
+        config_manager = config_manager
     )
 
 

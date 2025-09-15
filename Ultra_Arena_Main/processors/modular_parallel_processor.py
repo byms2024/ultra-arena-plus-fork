@@ -24,7 +24,7 @@ from config.config_base import STRATEGY_DIRECT_FILE, STRATEGY_TEXT_FIRST, STRATE
 class ModularParallelProcessor:
     """Modular parallel processor with support for multiple processing strategies."""
     
-    def __init__(self, config: Dict[str, Any], strategy_type: str = "direct_file", 
+    def __init__(self, config_manager,config: Dict[str, Any], strategy_type: str = "direct_file", 
                  mode: str = "parallel", max_workers: int = 5,
                  checkpoint_file: str = "modular_checkpoint.pkl", 
                  output_file: str = "modular_results.json",
@@ -45,6 +45,7 @@ class ModularParallelProcessor:
             run_settings: Dictionary containing run settings (strategy, mode, llm_provider, llm_model)
             csv_output_file: CSV output file path (optional)
         """
+        self.config_manager = config_manager
         self.config = config
         self.strategy_type = strategy_type
         self.mode = mode
@@ -510,10 +511,14 @@ class ModularParallelProcessor:
             Dictionary containing processing results and statistics
         """
         start_time = time.time()
+
+        system_prompt = self.config_manager._server_config.prompts.system_prompt
+        user_prompt = self.config_manager._server_config.prompts.user_prompt
+
         logging.info(f"🚀 Starting file processing with {len(pdf_files)} files")
         logging.info(f"📋 Strategy: {self.strategy_type}, Mode: {self.mode}, Max Workers: {self.max_workers}")
-        logging.info(f"📝 System prompt provided: {system_prompt is not None}")
-        logging.info(f"📝 User prompt provided: {user_prompt is not None}")
+        logging.info(f"📝 System prompt provided: {system_prompt}")
+        logging.info(f"📝 User prompt provided: {user_prompt}")
         
         # Filter out already processed files
         unprocessed_files = [f for f in pdf_files if f not in self.processed_files]
@@ -720,9 +725,9 @@ class ModularParallelProcessor:
         try:
             # Use the configured strategy to process the group
             logging.info(f"📋 Using strategy: {self.strategy_type}")
-            results, stats, _ = self.strategy.process_file_group(file_group=file_group, group_index=group_index, user_prompt=user_prompt, system_prompt=system_prompt, group_id=group_id)
+            results, stats, _ = self.strategy.process_file_group(config_manager=self.config_manager,file_group=file_group, group_index=group_index, user_prompt=user_prompt, system_prompt=system_prompt, group_id=group_id)
             logging.info(f"✅ Group {group_index} processed successfully, got {len(results)} results")
-            
+
             # Process results to match backup project structure exactly
             processed_results = []
             for file_path, result in results:

@@ -46,39 +46,46 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         logging.info(f"   Secondary extractor: {self.secondary_extractor_lib}")
         logging.info(f"   Regex criteria keys: {list(self.regex_criteria.keys())}")
     
-    def process_file_group(self, *, file_group: List[str], group_index: int, 
+    def process_file_group(self, *, config_manager, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files with enhanced text-first approach."""
         
+        desensitization_config = config_manager._server_config.desensitization.desensitization_config
+        sensitive_fields =config_manager._server_config.desensitization.sensitive_fields
+
         group_start_time = time.time()
         logging.info(f"📝 Starting enhanced text-first processing for group {group_index} ({group_id}): {len(file_group)} files")
+        logging.info(f"Desestization Config: {desensitization_config}")
         
+
         # Extract text from PDFs with fallback and maintain mapping
-        text_contents = []
-        text_contents_sensitized = []
+        text_content_list = []
+        text_content_sensitized_list = []
         original_filenames = []
         successful_files = []
         
         for file_path in file_group:
             text_content = self._extract_text_with_fallback(file_path)
+
             if text_content:
-                text_contents.append(text_content)
-                text_content_sensitized = self._sensitize_text_content(text_content, Path(file_path).name)
-                if text_content_sensitized:
-                    text_contents_sensitized.append(text_content_sensitized)
-                    print("=====================Original=======================")
-                    print(text_content)
-                    print("=====================Sensitized=======================")
-                    print(text_content_sensitized)
+
+                if desensitization_config:
+                    text_content_sensitized = self._sensitize_text_content(text_content, Path(file_path).name)
+                    text_content_sensitized_list.append(text_content_sensitized)
+                    logging.info("🛡 Text Content Desensitezed 🛡")
+                    logging.info(text_content_sensitized)
+
                 else:
-                    text_contents_sensitized.append(text_content)
+                    text_content_list.append(text_content)
+
                 original_filenames.append(Path(file_path).name)
                 successful_files.append(file_path)
                 logging.info(f"✅ Successfully extracted text from: {Path(file_path).name} ({len(text_content)} characters)")
             else:
                 logging.error(f"❌ No text could be extracted from: {Path(file_path).name} using any available method")
+        
 
-        if not text_contents:
+        if (not text_content_list) and (not text_content_sensitized_list):
             logging.error(f"❌ No text could be extracted for group {group_index}")
             # Create error results for all files
             results = [(file_path, {"error": "No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}) for file_path in file_group]
@@ -92,6 +99,11 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
             }
             return results, group_stats, group_id
         
+        if desensitization_config:
+            text_to_process = text_content_sensitized_list
+        else: 
+            text_to_process = text_content_list
+
         # Choose which prompt to use based on provider
         from config import config_base
         prompt_to_use = config_base.SIMPLIFIED_USER_PROMPT if self.llm_provider == "ollama" else user_prompt
@@ -100,7 +112,7 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         
         # Process text contents directly using LLM with embedded content
         results, group_stats = self._process_text_contents_directly(
-            text_contents=text_contents_sensitized,
+        text_contents=text_to_process,
             original_filenames=original_filenames,
             successful_files=successful_files,
             group_index=group_index,
@@ -355,6 +367,8 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
     
     def _sensitize_text_content(self, text_content: str, file_Name: str) -> str:
         from llm_strategies.data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
+        
+        #SENSITIVE_INFO = [ "CNPJ", "CPF", "VIN","CEP","CLAIM","NAME","ADDRESS"]
         
         aggregate_values: dict[str, set[str]] = {
             "CNPJ": set(),
