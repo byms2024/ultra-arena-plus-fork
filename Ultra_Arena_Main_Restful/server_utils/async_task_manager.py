@@ -203,7 +203,11 @@ class AsyncTaskManager:
                 self.tasks[request_id]["result"] = {"return_code": result_code, "status": "success" if result_code == 0 else "error"}
                 self.tasks[request_id]["completed_at"] = datetime.utcnow().isoformat() + "Z"
             
-            logger.info(f"✅ Request {request_id} completed successfully")
+            # Log completion status based on actual result
+            if result_code == 0:
+                logger.info(f"✅ Request {request_id} completed successfully")
+            else:
+                logger.error(f"🚨 Request {request_id} completed with errors (exit code: {result_code})")
             
         except Exception as e:
             logger.error(f"❌ Request {request_id} failed: {e}")

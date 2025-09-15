@@ -40,6 +40,7 @@ SENSITIVE_JSON_FORMAT_INSTRUCTIONS = """
       ```
 """
 
+<<<<<<< HEAD
 # JSON Formatting Instructions (concatenated to main prompt)
 JSON_FORMAT_INSTRUCTIONS = """
     **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
@@ -71,8 +72,53 @@ JSON_FORMAT_INSTRUCTIONS = """
 """
 
 
+=======
+# Simplified JSON Formatting Instructions for Ollama models
+SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
+**⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
+* **NUNCA** responda com texto explicativo antes ou depois do JSON
+* **NUNCA** use markdown code blocks (```json ou ```)
+* **SEMPRE** responda APENAS com JSON válido, sem texto adicional
+* **NUNCA** adicione notas, explicações ou comentários
+* Se houver múltiplas arquivos, retorne um **ARRAY JSON** com um objeto para cada arquivo
+* Se houver uma única arquivo, retorne um **ARRAY JSON** com um **OBJETO JSON** único
+* **EXEMPLO PARA ARQUIVO ÚNICO:**
+[
+  {
+    "DOC_TYPE": "Peças",
+    "CNPJ_1": "46.621.491/0002-70",
+    "VALOR_TOTAL": "2.465,73",
+    "Chassi": "LGXCE4CC7S0023860",
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+  }
+]
+* **EXEMPLO PARA MÚLTIPLAS ARQUIVOS:**
+[
+  {
+    "DOC_TYPE": "Peças",
+    "CNPJ_1": "46.621.491/0002-70",
+    "VALOR_TOTAL": "2.465,73",
+    "Chassi": "LGXCE4CC7S0023860",
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+  },
+  {
+    "DOC_TYPE": "Serviço",
+    "CNPJ_1": "46.621.491/0002-70",
+    "VALOR_TOTAL": "1.023,40",
+    "Chassi": null,
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN250100042_01"
+  }
+]
+* **EXEMPLO INCORRETO:**
+"Here is the extracted information in JSON format: [ ... ] Note: ..."
+"""
+
+>>>>>>> main
 # Mandatory Keys Configuration
 MANDATORY_KEYS = ['DOC_TYPE', 'CNPJ_1', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']
+
+# Reasoning Suppression Instruction (for reasoning models like DeepSeek R1)
+REASONING_SUPPRESSION = "CRÍTICO: Responda APENAS com JSON válido. NÃO mostre raciocínio, NÃO mostre pensamentos, NÃO explique o processo. Forneça SOMENTE a resposta JSON final."
 
 # Text First Strategy Criteria for No Need to Switch to 
 # Secondary Text Extractor before LLM
@@ -144,6 +190,51 @@ USER_PROMPT = """
     **As seguintes chaves DEVEM estar no NÍVEL MAIS ALTO do objeto JSON de saída:**
     **['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']**
     Para cada uma dessas chaves, extraia o valor único correspondente mas não invente o valor se ele não puder ser encontrado.
+"""
+
+# Simplified User Prompt for Ollama (enhanced with specific extraction rules)
+SIMPLIFIED_USER_PROMPT = """
+Esta deve ser um arquivo de um recibo de serviços ou peças vendidas para pós-venda de carros BYD no Brasil. 
+Extraia APENAS informações que estão REALMENTE presentes no arquivo. NÃO invente valores.
+
+Extraia estas 5 informações e formate em JSON:
+
+{
+  "DOC_TYPE": "Serviço" ou "Peças" ou "Outros",
+  "CNPJ_1": "primeiro CNPJ no formato XX.XXX.XXX/XXXX-XX",
+  "VALOR_TOTAL": "valor total no formato brasileiro com vírgula",
+  "Chassi": "código VIN de 17 caracteres começando com L",
+  "CLAIM_NUMBER": "código completo começando com BYDAMEBR"
+}
+
+**REGRAS ESPECÍFICAS:**
+
+**DOC_TYPE**: Deve ser OBRIGATORIAMENTE um dos seguintes:
+- "Serviço": Se o documento contiver "NFS-e", "NFSe", "NOTA FISCAL ELETRÔNICA DE SERVIÇOS" ou "TOMADOR DE SERVIÇOS" em posição de destaque
+- "Peças": Se não for serviço e contiver "NF-e" em posição de destaque
+- "Outros": Se nenhuma das condições anteriores for atendida
+
+**CNPJ_1**: Primeira ocorrência de CNPJ com EXATAMENTE 18 caracteres no formato XX.XXX.XXX/XXXX-XX
+
+**VALOR_TOTAL**: Valor associado ao campo "VALOR_TOTAL" ou "VALOR_TOTAL DO NOTA". 
+Deve estar no formato brasileiro (ex: 1.234,56). Se o valor original usar ponto como separador decimal, converta para vírgula.
+
+**Chassi**: Código VIN que SEMPRE começa com 'L' e tem EXATAMENTE 17 caracteres
+
+**CLAIM_NUMBER**: Localizado após "INFORMAÇÕES COMPLEMENTARES", SEMPRE começa com 'BYDAMEBR' 
+e tem formato "BYDAMEBR" + 16-18 caracteres + "_" + 2 dígitos (ex: "BYDAMEBR0015WCN241200032_01")
+**CRÍTICO**: SEMPRE inclua o sufixo "_XX" completo, nunca remova ou trunque
+
+**FORMATO DE SAÍDA:**
+- """ + REASONING_SUPPRESSION + """
+- Responda APENAS com JSON válido
+- Use null se não encontrar o valor
+- Não adicione explicações ou texto extra
+- Se DOC_TYPE for "Outros", defina outros campos como null
+""" + SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS
+
+
+USER_PROMPT += """
 
     ### **Instruções Específicas para Extração:**
         

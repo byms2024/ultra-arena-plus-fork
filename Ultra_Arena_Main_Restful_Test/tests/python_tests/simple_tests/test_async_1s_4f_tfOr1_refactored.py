@@ -15,11 +15,11 @@ def main():
     
     # Create the configuration for 1 strategy with 252 files (using 200_files directory)
     config = TestConfig(
-        combo_name="single_test_textF_ollama",
+        combo_name="single_test_textF_ollama_mistral",
         file_name="4_files",
         max_wait_time=3000,  # 30 minutes for large test
         poll_interval=10,    # 10 seconds for large test
-        max_files_per_request=10
+        max_files_per_request=1
     )
     
     # Run the test

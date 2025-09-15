@@ -35,7 +35,7 @@ PROVIDER = PROVIDER_GOOGLE  # "google" or "openai"
 
 # Mandatory keys are now provided by profiles (see PROFILE_DIR/profile_config.py)
 # NUM_RETRY_FOR_MANDATORY_KEYS remains here unless overridden by profile
-NUM_RETRY_FOR_MANDATORY_KEYS = 2
+NUM_RETRY_FOR_MANDATORY_KEYS = 0
 
 # Default mandatory keys (fallback for backward compatibility)
 MANDATORY_KEYS = []
@@ -111,7 +111,13 @@ GROK_MODEL_ID_GROK_2 = "grok-2-vision-latest"
 GROK_MODEL_TEMPERATURE = 0.1
 
 # Ollama Configuration (for local LLMs)
-LOCAL_OLLAMA_MODEL_DEEP_R1 = "deepseek-r1:8b"
+LOCAL_OLLAMA_MODEL_GPT_OSS_20B = "gpt-oss:20b"
+LOCAL_OLLAMA_MODEL_LLAMA3_8B = "llama3:8b"
+LOCAL_OLLAMA_MODEL_GEMMA3_12B = "gemma3:12b"
+LOCAL_OLLAMA_MODEL_DEEP_R1 = "deepseek-llm:7b-chat-q4_K_M"
+LOCAL_OLLAMA_MODEL_MISTRAL = "mistral:latest"
+LOCAL_OLLAMA_MODEL_LLAMA_3_2_11B = "llama3.2-vision:11b"
+LOCAL_OLLAMA_MODEL_LLAVA_7B = "llava:7b"
 LOCAL_OLLAMA_TEMPERATURE = 0.1
 LOCAL_OLLAMA_MAX_TOKENS = 4000
 LOCAL_OLLAMA_TIMEOUT = 120
@@ -131,8 +137,8 @@ API_INFRA_RETRY_DELAY_SECONDS = 1
 API_INFRA_BACKOFF_MULTIPLIER = 2
 
 # Hybrid approach retry limits
-TEXT_FIRST_MAX_RETRY = 3  # Maximum retries for text-first processing in hybrid mode
-FILE_DIRECT_MAX_RETRY = 2  # Maximum retries for direct file processing in hybrid mode
+HYBRID_TEXT_FIRST_MAX_RETRY = 1  # Maximum retries for text-first processing in hybrid mode
+HYBRID_FILE_DIRECT_MAX_RETRY = 2  # Maximum retries for direct file processing in hybrid mode
 
 # Text processing limits
 MAX_TEXT_LENGTH = 10000  # Maximum text length for processing
@@ -183,6 +189,7 @@ BENCHMARK_FILE_PATH = ""
 SYSTEM_PROMPT = ""
 JSON_FORMAT_INSTRUCTIONS = ""
 USER_PROMPT = ""
+SIMPLIFIED_USER_PROMPT = ""
 PROFILE_INPUT_DIR = ""
 INPUT_DIR_FOR_COMBO = ""
 
