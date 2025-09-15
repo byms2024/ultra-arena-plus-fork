@@ -50,6 +50,11 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files with enhanced text-first approach."""
         
+        print("=====================User Prompt=======================")
+        print(user_prompt)
+        print("=====================System Prompt=======================")
+        print(system_prompt)
+        
         group_start_time = time.time()
         logging.info(f"📝 Starting enhanced text-first processing for group {group_index} ({group_id}): {len(file_group)} files")
         

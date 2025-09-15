@@ -40,7 +40,6 @@ SENSITIVE_JSON_FORMAT_INSTRUCTIONS = """
       ```
 """
 
-<<<<<<< HEAD
 # JSON Formatting Instructions (concatenated to main prompt)
 JSON_FORMAT_INSTRUCTIONS = """
     **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
@@ -72,7 +71,6 @@ JSON_FORMAT_INSTRUCTIONS = """
 """
 
 
-=======
 # Simplified JSON Formatting Instructions for Ollama models
 SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
 **⚠️ REGRA CRÍTICA DE FORMATAÇÃO JSON:**
@@ -113,7 +111,6 @@ SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
 "Here is the extracted information in JSON format: [ ... ] Note: ..."
 """
 
->>>>>>> main
 # Mandatory Keys Configuration
 MANDATORY_KEYS = ['DOC_TYPE', 'CNPJ_1', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']
 

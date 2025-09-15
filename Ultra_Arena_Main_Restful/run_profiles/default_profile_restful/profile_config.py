@@ -1,5 +1,7 @@
 # Profile configuration for REST API component
 # This file contains processing configuration defaults that can be overridden by requests
+DESENSITIZATION = True
+SENSITIVE_INFO = [ "CNPJ", "CPF", "VIN","CEP","CLAIM","NAME"]
 
 # Processing Configuration Defaults
 DEFAULT_STREAMING = False
