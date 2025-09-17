@@ -62,10 +62,39 @@ NFE_REGEXES: list[re.Pattern[str]] = [
     re.compile(r"\bNFe\b", re.IGNORECASE),
 ]
 
-CLAIM_NO_REGEX: re.Pattern[str] = re.compile(
-    r"(?P<prefix>BY)?DAMEBR(?P<body>[A-Z0-9]{8,30}_[0-9A-Z]{2})",
+# Claim number patterns: prefer underscore form; fallback to no-underscore
+CLAIM_NO_REGEX_STRICT: re.Pattern[str] = re.compile(
+    r"BYDAMEBR(?P<body>[a-z0-9]{8,30})_(?P<suffix>\d{2})\b",
     re.IGNORECASE,
 )
+CLAIM_NO_REGEX_FALLBACK: re.Pattern[str] = re.compile(
+    r"BYDAMEBR(?P<body>[a-z0-9]{8,30})(?P<suffix>\d{2})\b",
+    re.IGNORECASE,
+)
+
+    # For claims, use the two-pass patterns
+def _has_claim(v: str) -> bool:
+    return bool(CLAIM_NO_REGEX_STRICT.search(v) or CLAIM_NO_REGEX_FALLBACK.search(v))
+
+def _find_claim_matches_with_spans(text: str) -> list[tuple[int, int, str]]:
+    matches: list[tuple[int, int, str]] = []
+    if not text:
+        return matches
+    strict_spans: list[tuple[int, int]] = []
+    # First pass: strict with underscore
+    for m in CLAIM_NO_REGEX_STRICT.finditer(text):
+        s, e = m.start(), m.end()
+        strict_spans.append((s, e))
+        matches.append((s, e, m.group(0)))
+    # Second pass: fallback without underscore, only if not overlapping strict
+    def _overlaps(s1: int, e1: int, s2: int, e2: int) -> bool:
+        return s1 < e2 and s2 < e1
+    for m in CLAIM_NO_REGEX_FALLBACK.finditer(text):
+        s, e = m.start(), m.end()
+        if any(_overlaps(s, e, ss, se) for ss, se in strict_spans):
+            continue
+        matches.append((s, e, m.group(0)))
+    return matches
 
 VIN_REGEX: re.Pattern[str] = re.compile(
     r"L[A-HJ-NPR-Z0-9][0X][A-HJ-NPR-Z0-9]{6,10}\d{7}",
@@ -319,18 +348,19 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
             # if digits in CNPJ_BANNED_DIGITS:
             #     continue
             values["CNPJ"].add(m.group(0))
-    for m in CPF_REGEX.finditer(t):
-        values["CPF"].add(m.group(0))
-    for m in CEP_REGEX.finditer(t):
-        values["CEP"].add(m.group(0))
+    # for m in CPF_REGEX.finditer(t):
+    #     values["CPF"].add(m.group(0))
+    # for m in CEP_REGEX.finditer(t):
+    #     values["CEP"].add(m.group(0))
     for m in VIN_REGEX.finditer(t):
         values["VIN"].add(m.group(0))
-    for m in CLAIM_NO_REGEX.finditer(t):
-        values["CLAIM"].add(m.group(0))
+    # Claim numbers: two-pass detection (underscore form preferred)
+    for s, e, val in _find_claim_matches_with_spans(t):
+        values["CLAIM"].add(val)
     # phones
-    for pat in PHONE_REGEXES:
-        for m in pat.finditer(t):
-            values["PHONE"].add(m.group(0))
+    # for pat in PHONE_REGEXES:
+    #     for m in pat.finditer(t):
+    #         values["PHONE"].add(m.group(0))
     # vehicle plates
     for pat in PLATE_REGEXES:
         for m in pat.finditer(t):
@@ -428,21 +458,21 @@ def _find_sensitive_custom_patterns(text: str) -> list[tuple[int, int, str]]:
                 pass
             spans.append((m.start(), m.end(), "CNPJ"))
     # CPF
-    for m in CPF_REGEX.finditer(text):
-        spans.append((m.start(), m.end(), "CPF"))
+    # for m in CPF_REGEX.finditer(text):
+    #     spans.append((m.start(), m.end(), "CPF"))
     # CEP
-    for m in CEP_REGEX.finditer(text):
-        spans.append((m.start(), m.end(), "CEP"))
+    # for m in CEP_REGEX.finditer(text):
+    #     spans.append((m.start(), m.end(), "CEP"))
     # VIN
     for m in VIN_REGEX.finditer(text):
         spans.append((m.start(), m.end(), "VIN"))
-    # CLAIM
-    for m in CLAIM_NO_REGEX.finditer(text):
-        spans.append((m.start(), m.end(), "CLAIM"))
+    # CLAIM: two-pass detection (underscore form preferred)
+    for s, e, _ in _find_claim_matches_with_spans(text):
+        spans.append((s, e, "CLAIM"))
     # PHONE
-    for pat in PHONE_REGEXES:
-        for m in pat.finditer(text):
-            spans.append((m.start(), m.end(), "PHONE"))
+    # for pat in PHONE_REGEXES:
+    #     for m in pat.finditer(text):
+    #         spans.append((m.start(), m.end(), "PHONE"))
     # PLATE
     for pat in PLATE_REGEXES:
         for m in pat.finditer(text):
@@ -643,7 +673,7 @@ def hash_dataframe_identifiers(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
     # Build maps per type to preserve identifiable prefixes
     cnpjs = [v for v in values if v and v.replace(".", "").replace("/", "").replace("-", "").isdigit() and len(re.sub(r"\D", "", v)) in (14,)]
     vins = [v for v in values if re.fullmatch(VIN_REGEX, v) is not None or v.upper().startswith("L")]
-    claims = [v for v in values if v.upper().startswith("BY") or re.search(CLAIM_NO_REGEX, v) is not None]
+    claims = [v for v in values if v.upper().startswith("BYDAMEBR") or re.search(CLAIM_NO_REGEX, v) is not None]
 
     cnpj_to_hash, cnpj_reverse = reversible_hash_values(cnpjs, "CNPJ")
     vin_to_hash, vin_reverse = reversible_hash_values(vins, "VIN")
@@ -690,18 +720,19 @@ def _collect_sensitive_values_from_text(text: str) -> dict[str, set[str]]:
             # if digits in CNPJ_BANNED_DIGITS:
             #     continue
             values["CNPJ"].add(m.group(0))
-    for m in CPF_REGEX.finditer(t):
-        values["CPF"].add(m.group(0))
-    for m in CEP_REGEX.finditer(t):
-        values["CEP"].add(m.group(0))
+    # for m in CPF_REGEX.finditer(t):
+    #     values["CPF"].add(m.group(0))
+    # for m in CEP_REGEX.finditer(t):
+    #     values["CEP"].add(m.group(0))
     for m in VIN_REGEX.finditer(t):
         values["VIN"].add(m.group(0))
-    for m in CLAIM_NO_REGEX.finditer(t):
-        values["CLAIM"].add(m.group(0))
+    # Claim numbers: two-pass detection (underscore form preferred)
+    for _, _, val in _find_claim_matches_with_spans(t):
+        values["CLAIM"].add(val)
     # phones
-    for pat in PHONE_REGEXES:
-        for m in pat.finditer(t):
-            values["PHONE"].add(m.group(0))
+    # for pat in PHONE_REGEXES:
+    #     for m in pat.finditer(t):
+    #         values["PHONE"].add(m.group(0))
     # vehicle plates
     for pat in PLATE_REGEXES:
         for m in pat.finditer(t):
