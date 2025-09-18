@@ -26,10 +26,13 @@ class ProcessingStrategyFactory:
         elif strategy_type == "hybrid":
             from .hybrid_strategy import HybridProcessingStrategy
             return HybridProcessingStrategy(config, streaming=streaming)
+        elif strategy_type == "chain":
+            from .chain_strategy import ChainedProcessingStrategy
+            return ChainedProcessingStrategy(config, streaming=streaming)
         else:
             raise ValueError(f"Unsupported strategy type: {strategy_type}")
     
     @staticmethod
     def get_available_strategies() -> List[str]:
         """Get list of available strategy types."""
-        return ["direct_file", "text_first", "image_first", "hybrid"] 
+        return ["direct_file", "text_first", "image_first", "hybrid", "chain"]

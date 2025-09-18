@@ -149,6 +149,16 @@ The monitoring dashboard provides insights into:
 - **BSD 3-Clause License**: Added proper open-source licensing
 - **Professional Documentation**: Enhanced README with accurate technical details
 
+### Chain Strategy (Fallback Pipeline)
+
+This fork introduces a new first-class strategy type: `chain`. A chain is an ordered list of strategies executed as a fallback pipeline. Files that fail in an earlier step are forwarded to the next strategy until either all files succeed or the chain is exhausted.
+
+Key points:
+- Configured via `strategy: "chain"` with `chain_steps` (e.g., `direct_file → text_first → image_first`).
+- Optional `chain_on_missing_keys: true` to treat missing mandatory keys as failure per step.
+- Factory-integrated; selectable like any other strategy or as part of combos.
+- Returns results/stats in the same shape as existing strategies, so the processor, CSV dumpers, and checkpoints continue to work.
+
 ### Security & Cleanup
 - ✅ API keys removed from repository
 - ✅ Generated files properly ignored
