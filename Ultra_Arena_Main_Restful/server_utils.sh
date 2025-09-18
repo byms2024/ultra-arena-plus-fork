@@ -3,6 +3,9 @@
 # Ultra Arena Main RESTful API Server Utilities
 # This file contains common functions used by server startup and shutdown scripts
 
+# Determine directory of this utilities script (also the server root)
+UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Function to detect the appropriate Python command
 detect_python() {
     local python_cmd=""
@@ -108,38 +111,79 @@ check_and_free_port() {
     return 1
 }
 
+# Function to detect if running under systemd
+is_running_under_systemd() {
+    if [ -n "$INVOCATION_ID" ] || [ -n "$JOURNAL_STREAM" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Function to check if systemctl is available
+has_systemctl() {
+    if command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# Function to start server via systemd
+start_server_systemd() {
+    local service_name="$1"
+    local profile="$2"
+
+    # Export for local process environment (useful if service reads Environment=)
+    export RUN_PROFILE="$profile"
+
+    echo "🛠 Using systemd service: ${service_name}.service"
+    # Provide env to systemd manager; service may reference it
+    systemctl set-environment RUN_PROFILE="$profile" PORT="5002" >/dev/null 2>&1
+
+    # Restart to handle already-running instance cleanly
+    if systemctl restart "${service_name}.service"; then
+        sleep 2
+        if systemctl is-active --quiet "${service_name}.service"; then
+            echo "🎉 Service ${service_name}.service is active."
+            echo "🔗 Health check: http://localhost:5002/health"
+            echo "💡 To see logs: journalctl -u ${service_name}.service -f"
+            return 0
+        else
+            echo "❌ Service did not become active. Inspect logs: journalctl -u ${service_name}.service -xe"
+            return 1
+        fi
+    else
+        echo "❌ Failed to start service ${service_name}.service"
+        return 1
+    fi
+}
+
 # Function to start server
 start_server() {
     local python_cmd="$1"
     local profile="$2"
+    local mode="$3"  # optional: "foreground" to run in foreground
     
     # Set environment variable for the profile
     export RUN_PROFILE="$profile"
     
-    # Start the server in background
-    echo "🔄 Starting server with $python_cmd..."
-    nohup $python_cmd server.py > server.log 2>&1 &
+    # If running under systemd or explicitly requested, run in foreground (no nohup)
+    if [ "$mode" = "foreground" ] || is_running_under_systemd; then
+        echo "🔄 Starting server in foreground with $python_cmd (systemd-compatible)..."
+        echo "🔗 Health check: http://localhost:5002/health"
+        exec $python_cmd "$UTILS_DIR/server.py"
+        # exec replaces the shell; no return here
+    fi
     
-    # Get the process ID
+    # Default: Start the server in background (for manual runs)
+    echo "🔄 Starting server with $python_cmd in background..."
+    nohup $python_cmd "$UTILS_DIR/server.py" > server.log 2>&1 &
     local server_pid=$!
     echo "✅ Server started with PID: $server_pid"
-    
-    # Wait a moment for server to start
     sleep 3
-    
-    # Check if server started successfully
     if pgrep -f "$python_cmd.*server.py" > /dev/null; then
         echo "🎉 Server started successfully!"
         echo "📊 Log file: server.log"
         echo "🔗 Health check: http://localhost:5002/health"
-        echo "📋 API endpoints:"
-        echo "   - GET  /health - Health check"
-        echo "   - POST /api/process/combo - Process combo (synchronous)"
-        echo "   - POST /api/process/combo/async - Process combo (asynchronous)"
-        echo "   - GET  /api/requests/<request_id> - Get request status"
-        echo "   - GET  /api/requests - Get all requests"
-        echo "   - GET  /api/combos - Get available combos"
-        echo ""
         echo "💡 To stop the server, run: ./stop_server.sh"
         return 0
     else
@@ -152,6 +196,29 @@ start_server() {
 stop_server() {
     echo "🛑 Stopping Ultra Arena Main RESTful API Server..."
     echo ""
+    
+    # Prefer stopping via systemd if available
+    if has_systemctl; then
+        local service_name="${SERVICE_NAME:-ultra-arena-main-restful}"
+        echo "🔎 Checking for systemd service: ${service_name}.service"
+        if systemctl status "${service_name}.service" >/dev/null 2>&1; then
+            echo "🔄 Stopping with systemd..."
+            if systemctl stop "${service_name}.service"; then
+                systemctl unset-environment RUN_PROFILE PORT >/dev/null 2>&1
+                sleep 1
+                if systemctl is-active --quiet "${service_name}.service"; then
+                    echo "⚠️  Service ${service_name}.service still active after stop."
+                else
+                    echo "✅ Service ${service_name}.service stopped."
+                    echo ""
+                    echo "🎉 Server shutdown complete!"
+                    return 0
+                fi
+            else
+                echo "⚠️  Failed to stop ${service_name}.service via systemd; falling back to process kill."
+            fi
+        fi
+    fi
     
     # Check if server is running (try both python and python3 patterns)
     if pgrep -f "python.*server.py" > /dev/null || pgrep -f "python3.*server.py" > /dev/null; then
