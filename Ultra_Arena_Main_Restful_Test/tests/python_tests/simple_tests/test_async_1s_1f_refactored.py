@@ -14,13 +14,23 @@ def main():
     """Run async test with 1 strategy and 1 file using the utility module."""
     
     # Create the configuration for 1 strategy with 1 file
+    # config = TestConfig(
+    #     combo_name="single_strategy_text_first_google",
+    #     file_name="1_file",
+    #     max_wait_time=3000,
+    #     poll_interval=10,
+    #     desensitization= False
+    # )
+
+        # Create the configuration for 1 strategy with 1 file
     config = TestConfig(
-        combo_name="single_strategy_text_first_google",
+        strat_chain=['textFirst','directFile'],
         file_name="1_file",
         max_wait_time=3000,
         poll_interval=10,
-        desensitization= False
+        desensitization= True
     )
+
     
     # Run the test
     result = run_async_test(config)

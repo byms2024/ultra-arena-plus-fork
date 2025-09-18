@@ -29,8 +29,9 @@ class TestStatus(Enum):
 @dataclass
 class TestConfig:
     """Configuration for async test runs."""
-    combo_name: str
     file_name: str
+    strat_chain: Optional[List[str]] = None 
+    combo_name: Optional[str] = None
     max_wait_time: int = 3000  # 50 minutes default
     poll_interval: int = 10    # 10 seconds default
     max_cc_strategies: int = 5
@@ -48,10 +49,17 @@ class AsyncTestRunner:
     
     def __init__(self, config: TestConfig):
         self.config = config
-        self.api_endpoint = f"{config.base_url}/api/process/combo/async"
         self.script_dir = Path(__file__).parent.parent.parent.parent
         self.test_fixtures_dir = self.script_dir / "test_fixtures" / "br_fixture"
         self.input_pdf_dir_path = self.test_fixtures_dir / "input_files" / config.file_name
+
+        if config.combo_name and config.strat_chain:
+            print(f"❌ Error: Choose either CHAIN or COMBO")
+            return False
+        elif config.combo_name:
+            self.api_endpoint = f"{config.base_url}/api/process/combo/async"
+        elif config.strat_chain:
+            self.api_endpoint = f"{config.base_url}/api/process/chain"
         
     def validate_input_directory(self) -> bool:
         """Validate that the input directory exists."""
@@ -63,6 +71,7 @@ class AsyncTestRunner:
     def build_payload(self) -> Dict[str, Any]:
         """Build the request payload for the API call."""
         return {
+            'strat_chain' : self.config.strat_chain,
             'combo_name': self.config.combo_name,
             'input_pdf_dir_path': str(self.input_pdf_dir_path),
             'run_type': self.config.run_type,
@@ -78,7 +87,11 @@ class AsyncTestRunner:
     def print_test_info(self):
         """Print test configuration information."""
         print(f"🚀 Ultra Arena Main - Async Test")
-        print(f"Combo: {self.config.combo_name}")
+
+        if self.config.combo_name:
+            print(f"Combo: {self.config.combo_name}")
+        else: 
+            print(f"Chain: {self.config.strat_chain}")
         print(f"Files: {self.config.file_name}")
         print("=" * 80)
         print(f"📁 Input Directory: {self.input_pdf_dir_path}")
