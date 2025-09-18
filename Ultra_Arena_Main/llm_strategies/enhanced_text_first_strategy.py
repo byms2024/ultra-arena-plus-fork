@@ -151,8 +151,12 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         # 3. Secondary extractor is different from primary
         total_keys = len(self.regex_criteria)
         secondary_time = 0.0
+        # should_try_secondary = (
+        #     (not primary_text or (total_keys > 0 and primary_score < total_keys)) and 
+        #     self.secondary_extractor_lib != self.primary_extractor_lib
+        # )
         should_try_secondary = (
-            (not primary_text or (total_keys > 0 and primary_score < total_keys)) and 
+            ((not primary_text) or (len(primary_text) < 1000)) and 
             self.secondary_extractor_lib != self.primary_extractor_lib
         )
         

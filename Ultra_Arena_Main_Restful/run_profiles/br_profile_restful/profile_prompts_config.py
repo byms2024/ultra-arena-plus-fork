@@ -56,7 +56,7 @@ JSON_FORMAT_INSTRUCTIONS = """
           "CNPJ_2": null,
           "VALOR_TOTAL": "2.465,73",
           "Chassi": "VIN_FB15C42CAE04A151",
-          "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+          "CLAIM_NUMBER": "CLAIM_6047809DCD016B4D"
         },
         {
           "DOC_TYPE": "Serviço",
@@ -64,7 +64,7 @@ JSON_FORMAT_INSTRUCTIONS = """
           "CNPJ_2": "CNPJ_4AR9GD83025MA531",
           "VALOR_TOTAL": "1.023,40",
           "Chassi": null,
-          "CLAIM_NUMBER": "BYDAMEBR0015WCN250100042_01"
+          "CLAIM_NUMBER": "CLAIM_6047809DCD016B4D"
         }
       ]
       ```
