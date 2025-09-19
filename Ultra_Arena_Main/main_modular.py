@@ -807,6 +807,15 @@ def _process_single_strategy(config_manager, group_name: str, group_params: Dict
     logging.info(f"📄 Output files: {output_file}, {csv_output_file}")
     
     # Run the processing
+    # Inject chain params for STRATEGY_CHAIN so get_config_for_strategy can read them
+    try:
+        if strategy == STRATEGY_CHAIN:
+            import config.config_base as config_base
+            config_base.CHAIN_STEPS = group_params.get("chain_steps", [])
+            config_base.CHAIN_ON_MISSING_KEYS = group_params.get("chain_on_missing_keys", False)
+    except Exception:
+        pass
+
     results = run_file_processing(
         input_pdf_dir_path=Path(input_files_path),
         pdf_file_paths=pdf_file_paths,
