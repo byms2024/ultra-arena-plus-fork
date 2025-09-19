@@ -43,10 +43,36 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
 
             strategy_type = step.get("type")
             overrides = step.get("overrides", {})
-            step_config = {**self.config, **overrides}
+
+            # Build per-step config using canonical generator to ensure proper provider configs and API keys
+            try:
+                from Ultra_Arena_Main.main_modular import get_config_for_strategy as _get_conf
+            except Exception:
+                import importlib
+                _get_conf = importlib.import_module('Ultra_Arena_Main.main_modular').get_config_for_strategy
+
+            provider_override = overrides.get("llm_provider") or self.config.get("llm_provider")
+            model_override = overrides.get("llm_model") or self.config.get("model")
+
+            base_step_config = _get_conf(strategy_type, llm_provider=provider_override, llm_model=model_override, streaming=self.streaming)
+
+            # Carry forward chain-level generic limits without clobbering provider configs
+            for key in [
+                "mandatory_keys",
+                "num_retry_for_mandatory_keys",
+                "max_num_files_per_request",
+                "max_num_file_parts_per_batch",
+            ]:
+                if key in self.config and key not in overrides:
+                    base_step_config[key] = self.config[key]
+
+            # Apply per-step overrides last
+            step_config = {**base_step_config, **overrides}
+
             strategy = ProcessingStrategyFactory.create_strategy(strategy_type, step_config, streaming=self.streaming)
 
             logging.info(f"🔗 Chain step {step_idx + 1}/{len(self.steps)}: {strategy_type} on {len(remaining_files)} file(s)")
+            logging.debug(f"🔧 Step overrides: {overrides}")
 
             # Call underlying strategy (be tolerant to different signatures)
             try:
@@ -72,10 +98,14 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["processing_time"] += stats.get("processing_time", 0)
 
             next_remaining: List[str] = []
+            forwarded_count = 0
+            finalized_count = 0
             for file_path, result in results:
                 if "error" in result:
                     per_file_result[file_path] = result
                     next_remaining.append(file_path)
+                    forwarded_count += 1
+                    logging.info(f"➡️  Step {step_idx + 1}: forwarding due to error → {file_path}: {result.get('error')}")
                     continue
 
                 if self.chain_on_missing_keys:
@@ -84,18 +114,26 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     if not ok:
                         per_file_result[file_path] = result
                         next_remaining.append(file_path)
+                        forwarded_count += 1
+                        logging.info(f"➡️  Step {step_idx + 1}: forwarding due to missing mandatory keys → {file_path}")
                         continue
 
                 # success for this file
                 if file_path not in per_file_result:
                     per_file_result[file_path] = result
+                    finalized_count += 1
+                    logging.info(f"✅ Step {step_idx + 1}: finalized → {file_path}")
 
+            logging.info(f"🔁 Step {step_idx + 1} complete: finalized={finalized_count}, forwarded={forwarded_count}")
+            if next_remaining:
+                logging.info(f"➡️  Forwarding {len(next_remaining)} file(s) to step {step_idx + 2}")
             remaining_files = next_remaining
 
         # Any file not finalized after all steps => failure
         for file_path in file_group:
             if file_path not in per_file_result:
                 per_file_result[file_path] = {"error": "All chained strategies exhausted without success"}
+                logging.info(f"❌ Chain exhausted: {file_path}")
 
         merged_results = [(fp, per_file_result[fp]) for fp in file_group]
         agg_stats["successful_files"] = sum(1 for _fp, res in merged_results if "error" not in res)

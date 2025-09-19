@@ -30,7 +30,7 @@ class RequestProcessor:
         """
         self.config_manager = config_manager
     
-    def validate_combo_request(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+    def validate_combo_request(self, data: Dict[str, Any]) -> Tuple[bool, Any]:
         """
         Validate combo processing request before configuration assembly.
         
@@ -90,16 +90,18 @@ class RequestProcessor:
             config_result = self.config_manager.assemble_request_config(data, use_default_combo)
             
             # Log configuration summary
-            self.config_manager.get_request_assembler().log_configuration_summary(config_result)
-            
-            # Inject final configuration into config_base for backward compatibility
-            self.config_manager.get_request_assembler().inject_final_config_into_base(config_result)
+            assembler = self.config_manager.get_request_assembler()
+            if assembler:
+                assembler.log_configuration_summary(config_result)
+                # Inject final configuration into config_base for backward compatibility
+                assembler.inject_final_config_into_base(config_result)
             
             # Convert to the expected format for backward compatibility
             request_config = config_result.request_config
             
             return {
                 "combo_name": request_config.combo_name,
+                "chain_name": request_config.chain_name,
                 "input_pdf_dir_path": request_config.input_pdf_dir_path,
                 "benchmark_eval_mode": request_config.final_processing.benchmark_eval_mode,
                 "streaming": request_config.final_processing.streaming,
@@ -155,7 +157,13 @@ class RequestProcessor:
         
         # Time module import
         import_start_time = time.time()
-        from main_modular import run_combo_processing
+        # Dynamically import to avoid static import resolution issues
+        import importlib, os, sys
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'Ultra_Arena_Main'))
+        if base_dir not in sys.path:
+            sys.path.insert(0, base_dir)
+        run_combo_processing = importlib.import_module('main_modular').run_combo_processing
+        # If a chain_name is provided, we will ignore combo_name and run a single chain strategy
         import_time = time.time() - import_start_time
         logger.info(f"⏱️  Module Import Time: {import_time:.3f}s")
         
@@ -163,18 +171,86 @@ class RequestProcessor:
         main_processing_start = time.time()
         logger.info(f"⏱️  START: Main Library Processing Call")
         
-        result_code = run_combo_processing(
-            combo_name=config["combo_name"],
-            benchmark_eval_mode=config["benchmark_eval_mode"],
-            streaming=config["streaming"],
-            max_cc_strategies=config["max_cc_strategies"],
-            max_cc_filegroups=config["max_cc_filegroups"],
-            max_files_per_request=config["max_files_per_request"],
-            input_pdf_dir_path=config["input_pdf_dir_path"],
-            pdf_file_paths=[],
-            output_dir=config["output_dir"],
-            benchmark_file_path=config["benchmark_file_path"]
-        )
+        chain_name = config.get("chain_name")
+        if chain_name:
+            # Build a synthetic combo run with a single parameter group that uses chain strategy
+            # Use centralized chain definitions
+            try:
+                from Ultra_Arena_Main.config.config_chain_defs import chain_definitions
+            except Exception as e:
+                logger.error(f"❌ Chain requested but chain definitions could not be imported: {e}")
+                raise
+
+            if chain_name not in chain_definitions:
+                raise ValueError(f"Chain '{chain_name}' not found in chain_definitions")
+
+            from Ultra_Arena_Main.llm_strategies.strategy_factory import ProcessingStrategyFactory
+            from Ultra_Arena_Main.config import config_base as ua_config_base
+            from Ultra_Arena_Main.main_modular import get_config_for_strategy
+            from Ultra_Arena_Main.processors.modular_parallel_processor import ModularParallelProcessor
+
+            # Resolve files
+            input_path = config["input_pdf_dir_path"]
+            if input_path is None:
+                raise ValueError("input_pdf_dir_path is required when using chain_name")
+            from Ultra_Arena_Main.main_modular import get_pdf_files
+            pdf_files = get_pdf_files(str(input_path))
+
+            # Prepare output filenames using same utilities
+            from Ultra_Arena_Main.main_modular import generate_timestamped_filename
+            provider = ua_config_base.DEFAULT_LLM_PROVIDER
+            model = ua_config_base.GOOGLE_DEFAULT_MODEL_ID if provider == "google" else "model"
+            strategy = ua_config_base.STRATEGY_CHAIN
+            mode = ua_config_base.MODE_PARALLEL
+            json_filename = generate_timestamped_filename(strategy, mode, provider, model, "json")
+            csv_filename = generate_timestamped_filename(strategy, mode, provider, model, "csv")
+            from Ultra_Arena_Main.common.combo_meta_manager import ComboMetaManager
+            from Ultra_Arena_Main.common.request_id_generator import RequestIDGenerator
+            request_metadata = RequestIDGenerator.create_request_metadata()
+            results_dir = ComboMetaManager.create_results_directory(config["output_dir"], request_metadata["request_id"]) 
+            combo_csv_dir, combo_json_dir = ComboMetaManager.create_combo_directories(results_dir)
+            output_file = str((combo_json_dir / json_filename))
+            csv_output_file = str((combo_csv_dir / csv_filename))
+
+            # Build chain config by merging defaults with chain steps
+            base_chain_config = get_config_for_strategy(ua_config_base.STRATEGY_CHAIN, streaming=config["streaming"])            
+            chain_cfg = {**base_chain_config, **chain_definitions[chain_name]}
+
+            # Create processor for chain
+            processor = ModularParallelProcessor(
+                config_manager=self.config_manager,
+                config=chain_cfg,
+                strategy_type=ua_config_base.STRATEGY_CHAIN,
+                mode=mode,
+                max_workers=config["max_cc_filegroups"],
+                checkpoint_file=f"modular_checkpoint_chain_{chain_name}.pkl",
+                output_file=output_file,
+                real_time_save=True,
+                run_settings={"strategy": strategy, "mode": mode, "llm_provider": provider, "llm_model": model},
+                csv_output_file=csv_output_file,
+                benchmark_comparator=None,
+                streaming=config["streaming"],
+            )
+
+            # Process using the unified processor API
+            import importlib
+            cb = importlib.import_module('config.config_base')
+            results = processor.process_files(pdf_files=pdf_files, system_prompt=getattr(cb, 'SYSTEM_PROMPT', ''), user_prompt=getattr(cb, 'USER_PROMPT', ''))
+            # Return a success marker consistent with run_combo_processing
+            result_code = 0 if results else 1
+        else:
+            result_code = run_combo_processing(
+                combo_name=config["combo_name"],
+                benchmark_eval_mode=config["benchmark_eval_mode"],
+                streaming=config["streaming"],
+                max_cc_strategies=config["max_cc_strategies"],
+                max_cc_filegroups=config["max_cc_filegroups"],
+                max_files_per_request=config["max_files_per_request"],
+                input_pdf_dir_path=config["input_pdf_dir_path"],
+                pdf_file_paths=[],
+                output_dir=config["output_dir"],
+                benchmark_file_path=config["benchmark_file_path"]
+            )
         
         main_processing_time = time.time() - main_processing_start
         logger.info(f"⏱️  END: Main Library Processing Call - Duration: {main_processing_time:.3f}s")
@@ -258,7 +334,9 @@ class RequestProcessor:
         # Get strategy groups information
         strategy_groups = []
         try:
-            from config.config_combo_run import combo_config
+            import importlib
+            combo_module = importlib.import_module('config.config_combo_run')
+            combo_config = getattr(combo_module, 'combo_config', {})
             if combo_name and combo_name in combo_config:
                 strategy_groups = combo_config[combo_name].get("strategy_groups", [])
         except Exception as e:
@@ -346,7 +424,9 @@ class RequestProcessor:
         # Get strategy groups information
         strategy_groups = []
         try:
-            from config.config_combo_run import combo_config
+            import importlib
+            combo_module = importlib.import_module('config.config_combo_run')
+            combo_config = getattr(combo_module, 'combo_config', {})
             if combo_name and combo_name in combo_config:
                 strategy_groups = combo_config[combo_name].get("strategy_groups", [])
         except Exception as e:

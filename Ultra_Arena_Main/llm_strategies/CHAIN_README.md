@@ -59,14 +59,58 @@ Per-step overrides (optional):
 
 ## Implementation status
 Already implemented:
-- `Ultra_Arena_Main/llm_strategies/chain_strategy.py` (skeleton implementation)
+- `Ultra_Arena_Main/llm_strategies/chain_strategy.py` (full implementation)
 - Factory wiring in `Ultra_Arena_Main/llm_strategies/strategy_factory.py` (`strategy_type == "chain"`)
 
-To be built/refined:
-- Add `STRATEGY_CHAIN = "chain"` to `config/config_base.py`
-- Update `get_config_for_strategy` (in `Ultra_Arena_Main/main_modular.py`) to pass through `chain_steps` and flags
-- Add an example entry in `config/config_param_grps.py` (see above)
-- Optional: harmonize `process_file_group` signatures so all strategies accept `config_manager=None, **kwargs`
+New wiring added:
+- `STRATEGY_CHAIN` added to `config/config_base.py`.
+- `get_config_for_strategy` updated to return a pass-through config for chain; chain steps are merged at call time.
+- `Ultra_Arena_Main_Restful/server_utils` path updated so REST requests can specify `chain_name` and bypass `combo_name`.
+- Central map `config/config_chain_defs.py` defines named chains.
+
+REST flow (chain_name overrides combo_name):
+1) Client POSTs to `/api/process/combo` with payload containing `chain_name` plus the usual I/O fields. When `chain_name` is present, `combo_name` is ignored.
+2) `server_utils/request_validator.py` accepts `chain_name` (optional); existing validation for I/O remains.
+3) `server_utils/config_assemblers/request_config_assembler.py` extracts `chain_name` and builds a unified request config.
+4) `server_utils/request_processor.py` sees `chain_name`, loads `config/config_chain_defs.py`, builds a single-chain config via `get_config_for_strategy(STRATEGY_CHAIN)` and merges in that chain’s `chain_steps` and options.
+5) It creates a `ModularParallelProcessor` with `strategy_type="chain"` and runs processing over the resolved input files. Results and CSV/JSON outputs are produced in the same directory structure as combos.
+6) The synchronous endpoint returns `status: success` and results summary consistent with combo runs.
+
+How to define and use chains:
+- Add or edit `Ultra_Arena_Main/config/config_chain_defs.py`:
+```python
+chain_definitions = {
+    "test_1": {
+        "chain_steps": [
+            {"type": "text_first"},
+            {"type": "direct_file"},
+        ],
+        "chain_on_missing_keys": False,
+    },
+}
+```
+- Call the REST endpoint with a `chain_name`:
+```json
+{
+  "chain_name": "test_1",
+  "input_pdf_dir_path": "C:\\path\\to\\pdfs",
+  "output_dir": "C:\\path\\to\\output",
+  "streaming": false,
+  "max_cc_strategies": 1,
+  "max_cc_filegroups": 1,
+  "max_files_per_request": 10
+}
+```
+
+Behavior details:
+- If `chain_name` is present, the server ignores any `combo_name` and runs the requested chain.
+- If no `chain_name` is provided, normal combo processing path is used.
+- Per-step overrides inside `chain_steps[*].overrides` are supported and merged onto the base chain config.
+- `chain_on_missing_keys` controls whether to fallback when mandatory keys are missing, in addition to hard errors.
+
+Testing
+- Use `Ultra_Arena_Main_Restful_Test/tests/python_tests/simple_tests/test_chain_rest_basic.py` which posts `chain_name` and prints the response.
+
 
 ## Stats and accounting
 - Group stats aggregate estimated and actual tokens and processing time across steps.
@@ -75,6 +119,16 @@ To be built/refined:
 ## Error handling
 - If all steps fail for a file, the result contains `{ "error": "All chained strategies exhausted without success" }`.
 - Chain tolerates varying strategy method signatures by catching `TypeError` and retrying without `config_manager`.
+
+## Logging (fallback visibility)
+- At each step, logs include:
+  - Which step is running, how many files it’s attempting, and the step overrides.
+  - For each file:
+    - `➡️ forwarding due to error` with the error reason.
+    - `➡️ forwarding due to missing mandatory keys` when `chain_on_missing_keys=True` and required keys are absent.
+    - `✅ finalized` when the file is completed in the current step.
+  - A step summary: `finalized` and `forwarded` counts, and notice of how many are forwarded to the next step.
+  - When the chain is exhausted for a file: `❌ Chain exhausted: <file>`.
 
 ## Testing guidelines
 - Unit: two-step chain where step 1 errors, step 2 succeeds → ensure per-file results and aggregated stats look correct.

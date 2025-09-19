@@ -140,13 +140,23 @@ class RequestValidator:
                                 validated_params: Dict[str, Any], param_sources: Dict[str, ParameterSource]) -> tuple:
         """Validate required parameters."""
         
-        # combo_name is required
-        combo_name = request_data.get('combo_name')
-        if not combo_name:
-            errors.append("Missing required parameter: combo_name")
+        # Allow either chain_name or combo_name. If chain_name is present, combo_name becomes optional.
+        chain_name = request_data.get('chain_name')
+        if chain_name:
+            validated_params['chain_name'] = chain_name
+            param_sources['chain_name'] = ParameterSource.REQUEST
+            # combo_name optional in this case (ignored down the line)
+            if 'combo_name' in request_data and request_data.get('combo_name'):
+                validated_params['combo_name'] = request_data.get('combo_name')
+                param_sources['combo_name'] = ParameterSource.REQUEST
         else:
-            validated_params['combo_name'] = combo_name
-            param_sources['combo_name'] = ParameterSource.REQUEST
+            # No chain_name => combo_name required
+            combo_name = request_data.get('combo_name')
+            if not combo_name:
+                errors.append("Missing required parameter: combo_name (or provide chain_name)")
+            else:
+                validated_params['combo_name'] = combo_name
+                param_sources['combo_name'] = ParameterSource.REQUEST
         
         # Handle input_pdf_dir_path vs pdf_file_paths mutual exclusivity
         input_path = request_data.get('input_pdf_dir_path')
