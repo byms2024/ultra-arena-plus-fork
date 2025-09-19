@@ -29,7 +29,7 @@ from config.config_base import (
     # to ensure we get the current injected values, not stale imports from module load time
     DEFAULT_STRATEGY_TYPE, DEFAULT_MODE, DEFAULT_MAX_CC_FILEGROUPS,
     DEFAULT_OUTPUT_FILE, DEFAULT_CHECKPOINT_FILE,
-    STRATEGY_DIRECT_FILE, STRATEGY_TEXT_FIRST, STRATEGY_IMAGE_FIRST, STRATEGY_HYBRID,
+    STRATEGY_DIRECT_FILE, STRATEGY_TEXT_FIRST, STRATEGY_IMAGE_FIRST, STRATEGY_HYBRID, STRATEGY_CHAIN,
     MODE_PARALLEL, MODE_BATCH,
     # Direct file strategy configurations
     DIRECT_FILE_PROVIDER_CONFIGS, DIRECT_FILE_MAX_RETRIES, DIRECT_FILE_RETRY_DELAY_SECONDS,
@@ -246,6 +246,22 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
         # Merge configurations, preferring direct_file settings for conflicts
         hybrid_config = {**text_config, **direct_config}
         return hybrid_config
+    elif strategy_type == STRATEGY_CHAIN:
+        # Pass-through for chain: caller must provide chain_steps and flags in higher-level param group
+        config = {
+            "llm_provider": llm_provider or config_base.DEFAULT_LLM_PROVIDER,
+            "provider_configs": IMAGE_PROVIDER_CONFIGS | TEXT_PROVIDER_CONFIGS | DIRECT_FILE_PROVIDER_CONFIGS,
+            "mandatory_keys": config_base.MANDATORY_KEYS,
+            "num_retry_for_mandatory_keys": config_base.NUM_RETRY_FOR_MANDATORY_KEYS,
+            "max_num_files_per_request": config_base.MAX_NUM_FILES_PER_REQUEST,
+            "max_num_file_parts_per_batch": config_base.MAX_NUM_FILE_PARTS_PER_BATCH,
+            "max_retries": config_base.API_INFRA_MAX_RETRIES,
+            "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS,
+            # Chain-specific fields expected to be injected by param groups or API layer
+            "chain_steps": getattr(config_base, "CHAIN_STEPS", []),
+            "chain_on_missing_keys": getattr(config_base, "CHAIN_ON_MISSING_KEYS", False),
+        }
+        return config
     else:
         raise ValueError(f"Unsupported strategy type: {strategy_type}")
 

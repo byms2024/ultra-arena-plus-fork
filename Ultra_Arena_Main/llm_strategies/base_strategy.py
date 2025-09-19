@@ -27,12 +27,12 @@ class BaseProcessingStrategy(ABC):
             self.benchmark_comparator = BenchmarkComparator(config["benchmark_data"])
     
     @abstractmethod
-    def process_file_group(self, *, file_group: List[str], group_index: int, 
+    def process_file_group(self, *, config_manager: Any = None, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process a group of files using the specific strategy."""
         pass
     
-    def check_mandatory_keys(self, result: Dict[str, Any], file_path: str = None, benchmark_comparator = None) -> Tuple[bool, List[str]]:
+    def check_mandatory_keys(self, result: Dict[str, Any], file_path: str | None = None, benchmark_comparator = None) -> Tuple[bool, List[str]]:
         """Check if all mandatory keys are present in the result."""
         # Filter out empty strings and whitespace-only strings from mandatory keys
         filtered_mandatory_keys = [key for key in self.mandatory_keys if key and key.strip()]

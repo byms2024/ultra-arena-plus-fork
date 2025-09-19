@@ -49,23 +49,17 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             logging.info(f"🔗 Chain step {step_idx + 1}/{len(self.steps)}: {strategy_type} on {len(remaining_files)} file(s)")
 
             # Call underlying strategy (be tolerant to different signatures)
+            call_kwargs = {
+                "file_group": remaining_files,
+                "group_index": group_index,
+                "group_id": f"{group_id}_chain_{step_idx + 1}",
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            }
             try:
-                results, stats, _ = strategy.process_file_group(
-                    config_manager=config_manager,
-                    file_group=remaining_files,
-                    group_index=group_index,
-                    group_id=f"{group_id}_chain_{step_idx + 1}",
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt
-                )
+                results, stats, _ = strategy.process_file_group(**{**call_kwargs, "config_manager": config_manager})
             except TypeError:
-                results, stats, _ = strategy.process_file_group(
-                    file_group=remaining_files,
-                    group_index=group_index,
-                    group_id=f"{group_id}_chain_{step_idx + 1}",
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt
-                )
+                results, stats, _ = strategy.process_file_group(**call_kwargs)
 
             agg_stats["estimated_tokens"] += stats.get("estimated_tokens", 0)
             agg_stats["total_tokens"] += stats.get("total_tokens", 0)
