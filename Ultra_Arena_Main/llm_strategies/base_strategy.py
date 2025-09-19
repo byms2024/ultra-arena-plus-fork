@@ -6,9 +6,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Tuple
-
 from common.benchmark_comparator import BenchmarkComparator
-
 
 class BaseProcessingStrategy(ABC):
     """Abstract base class for all processing strategies."""
@@ -32,9 +30,53 @@ class BaseProcessingStrategy(ABC):
         """Process a group of files using the specific strategy."""
         pass
     
-    def check_mandatory_keys(self, result: Dict[str, Any], file_path: str = None, benchmark_comparator = None) -> Tuple[bool, List[str]]:
-        """Check if all mandatory keys are present in the result."""
+    def check_mandatory_keys(self, result: Dict[str, Any], file_path: str = None, benchmark_comparator = None, database_ops = None) -> Tuple[bool, List[str]]:
+        """Check if all mandatory keys are present in the result.
+
+        Args:
+            result: Dictionary containing extracted data to validate
+            file_path: Optional file path for benchmark comparison
+            benchmark_comparator: Optional benchmark comparator instance
+            database_ops: Optional database operations instance for DMS validation
+
+        Returns:
+            Tuple of (is_valid, missing_keys_list)
+        """
         # Filter out empty strings and whitespace-only strings from mandatory keys
+        # THIS IS BAD, BUT IT'S FOR THE MOMENT, WE NEED TO GET THE DESENSITIZATION CONFIG FROM THE CONFIG MANAGER BUT I CANT FIND IT WITHOUT SIGNIFICANT CODE RESTRUCTURING
+        from llm_strategies.data_sensitization import resensitize_data
+        result = resensitize_data(result)
+
+        # Get DMS values if database_ops is provided and we can extract claim_id
+        dms_values = {}
+        if database_ops:
+            claim_id = None
+            # Try to extract claim_id from result
+            if 'CLAIM_ID' in result:
+                claim_id = result['CLAIM_ID']
+            elif 'CLAIM_NUMBER' in result:
+                # Try to lookup claim_id from claim number
+                claim_no = result['CLAIM_NUMBER']
+                if hasattr(database_ops, 'get_claim_id_by_claim_no'):
+                    claim_id = database_ops.get_claim_id_by_claim_no(str(claim_no))
+            elif 'CLAIM_NO' in result:
+                # Alternative field name
+                claim_no = result['CLAIM_NO']
+                if hasattr(database_ops, 'get_claim_id_by_claim_no'):
+                    claim_id = database_ops.get_claim_id_by_claim_no(str(claim_no))
+
+            if claim_id:
+                try:
+                    dms_values = database_ops.get_dms_key_values(int(claim_id))
+                    if dms_values:
+                        logging.info(f"✅ Retrieved DMS values for claim {claim_id}: {list(dms_values.keys())}")
+                    else:
+                        logging.warning(f"⚠️ No DMS values found for claim {claim_id}")
+                except Exception as e:
+                    logging.error(f"❌ Error retrieving DMS values for claim {claim_id}: {e}")
+            else:
+                logging.debug("No claim_id found in result for DMS validation")
+
         filtered_mandatory_keys = [key for key in self.mandatory_keys if key and key.strip()]
         
         if not filtered_mandatory_keys:
@@ -65,7 +107,42 @@ class BaseProcessingStrategy(ABC):
         if missing_keys:
             logging.warning(f"⚠️ Missing mandatory keys: {missing_keys}. Present keys: {present_keys}")
             return False, missing_keys
-        
+
+        # If we have DMS values, validate extracted values against DMS data
+        if dms_values:
+            dms_validation_errors = []
+            for key in present_keys:
+                extracted_value = result.get(key)
+                dms_value = dms_values.get(key)
+
+                if dms_value is not None and extracted_value is not None:
+                    # Compare values (with some tolerance for numeric values)
+                    if key in ['GROSS_CREDIT', 'LABOUR_AMOUNT', 'PART_AMOUNT']:
+                        try:
+                            # Convert to float for comparison with small tolerance
+                            extracted_num = float(str(extracted_value).replace('R$', '').replace(',', '.').replace(' ', ''))
+                            dms_num = float(str(dms_value))
+                            tolerance = 0.01  # 1% tolerance
+
+                            if abs(extracted_num - dms_num) > (dms_num * tolerance):
+                                logging.info(f"🔍 DMS value mismatch for {key}: extracted='{extracted_value}' vs DMS='{dms_value}' (tolerance: {tolerance*100}%)")
+                                dms_validation_errors.append(f"DMS_{key}_MISMATCH")
+                        except (ValueError, TypeError) as e:
+                            # If numeric comparison fails, do string comparison
+                            if str(extracted_value).strip() != str(dms_value).strip():
+                                logging.info(f"🔍 DMS value mismatch for {key}: extracted='{extracted_value}' vs DMS='{dms_value}'")
+                                dms_validation_errors.append(f"DMS_{key}_MISMATCH")
+                    elif str(extracted_value).strip() != str(dms_value).strip():
+                        logging.info(f"🔍 DMS value mismatch for {key}: extracted='{extracted_value}' vs DMS='{dms_value}'")
+                        dms_validation_errors.append(f"DMS_{key}_MISMATCH")
+                    else:
+                        logging.debug(f"✅ DMS validation passed for {key}: '{extracted_value}'")
+
+            if dms_validation_errors:
+                logging.warning(f"⚠️ DMS validation found {len(dms_validation_errors)} mismatches")
+                # Note: We're not failing validation here, just logging for now
+                # Could be made configurable to fail on DMS mismatches if needed
+
         # If we have a benchmark comparator, check if values match
         if benchmark_comparator and file_path:
             file_has_errors = False

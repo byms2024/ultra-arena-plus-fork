@@ -13,13 +13,14 @@ from .strategy_factory import ProcessingStrategyFactory
 class ChainedProcessingStrategy(BaseProcessingStrategy):
     """Execute an ordered list of strategies as a fallback chain."""
 
-    def __init__(self, config: Dict[str, Any], streaming: bool = False):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
         super().__init__(config)
         self.streaming = streaming
         self.steps = config.get("chain_steps", [])
         if not self.steps:
             raise ValueError("chain_steps must be provided for ChainedProcessingStrategy")
         self.chain_on_missing_keys = config.get("chain_on_missing_keys", False)
+        self.database_ops = database_ops
 
     def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str
@@ -44,7 +45,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             strategy_type = step.get("type")
             overrides = step.get("overrides", {})
             step_config = {**self.config, **overrides}
-            strategy = ProcessingStrategyFactory.create_strategy(strategy_type, step_config, streaming=self.streaming)
+            strategy = ProcessingStrategyFactory.create_strategy(strategy_type, step_config, streaming=self.streaming, database_ops=self.database_ops)
 
             logging.info(f"🔗 Chain step {step_idx + 1}/{len(self.steps)}: {strategy_type} on {len(remaining_files)} file(s)")
 
@@ -80,7 +81,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
 
                 if self.chain_on_missing_keys:
                     model_output = result.get("file_model_output", result)
-                    ok, _missing = self.check_mandatory_keys(model_output, file_path, getattr(self, "benchmark_comparator", None))
+                    ok, _missing = self.check_mandatory_keys(model_output, file_path, getattr(self, "benchmark_comparator", None), self.database_ops)
                     if not ok:
                         per_file_result[file_path] = result
                         next_remaining.append(file_path)

@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
 
+from llm_strategies.data_sensitization import resensitize_data
+
 # Import default output directory and mandatory keys
 try:
     from config.config_base import DEFAULT_OUTPUT_DIR, MANDATORY_KEYS
@@ -49,6 +51,11 @@ class CSVResultDumper:
     
     def _check_mandatory_keys(self, result: Dict[str, Any]) -> Tuple[bool, List[str]]:
         """Check if all mandatory keys are present and non-empty."""
+        print("=========result===========\n")
+        print(result)
+        result = resensitize_data(result)
+        print("=========Sensitized result===========\n")
+        print(result)
         if not result or not isinstance(result, dict):
             return False, MANDATORY_KEYS
         

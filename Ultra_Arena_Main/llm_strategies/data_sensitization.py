@@ -673,7 +673,7 @@ def hash_dataframe_identifiers(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
     # Build maps per type to preserve identifiable prefixes
     cnpjs = [v for v in values if v and v.replace(".", "").replace("/", "").replace("-", "").isdigit() and len(re.sub(r"\D", "", v)) in (14,)]
     vins = [v for v in values if re.fullmatch(VIN_REGEX, v) is not None or v.upper().startswith("L")]
-    claims = [v for v in values if v.upper().startswith("BYDAMEBR") or re.search(CLAIM_NO_REGEX, v) is not None]
+    claims = [v for v in values if v.upper().startswith("BYDAMEBR") or _has_claim(v)]
 
     cnpj_to_hash, cnpj_reverse = reversible_hash_values(cnpjs, "CNPJ")
     vin_to_hash, vin_reverse = reversible_hash_values(vins, "VIN")
@@ -1043,9 +1043,6 @@ def resensitize_output(
             except Exception:
                 continue
         
-        print("=========content===========\n")
-        print(content)
-        
         for placeholder, original in sorted_items:
             if not placeholder:
                 continue
@@ -1053,9 +1050,6 @@ def resensitize_output(
                 content = content.replace(placeholder, original)
             except Exception:
                 continue
-
-        print("=========content after===========\n")
-        print(content)
 
         # Write back
         try:
@@ -1072,7 +1066,6 @@ def resensitize_output(
         ReverseMapStore().clear()
     except Exception:
         pass
-
 
 def soft_resensitize_output(
     hashed_text_file_a: str | Path,
@@ -1129,3 +1122,41 @@ def soft_resensitize_output(
                 file_path.write_text(content, encoding="latin-1", errors="ignore")
             except Exception:
                 continue
+
+def resensitize_data(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Resensitize a dict by replacing placeholders using ReverseMapStore's map only."""
+    print("=========result===========\n")
+    print(result)
+    
+    try:
+        reverse_map: dict[str, str] = ReverseMapStore().get_map()
+    except Exception:
+        reverse_map = {}
+
+    if not reverse_map:
+        return result
+
+    # Replace longer placeholders first to avoid partial overlaps
+    sorted_items: list[tuple[str, str]] = sorted(reverse_map.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+    def _replace_in_obj(obj: Any) -> Any:
+        if isinstance(obj, str):
+            out = obj
+            for placeholder, original in sorted_items:
+                try:
+                    out = out.replace(placeholder, original)
+                except Exception:
+                    continue
+            return out
+        if isinstance(obj, list):
+            return [_replace_in_obj(it) for it in obj]
+        if isinstance(obj, dict):
+            return {k: _replace_in_obj(v) for k, v in obj.items()}
+        print("=========result after===========\n")
+        print(obj)
+        return obj
+
+    try:
+        return _replace_in_obj(result)
+    except Exception:
+        return result

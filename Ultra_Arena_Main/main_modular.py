@@ -129,7 +129,22 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
             "max_num_files_per_request": config_base.MAX_NUM_FILES_PER_REQUEST,
             "max_num_file_parts_per_batch": config_base.MAX_NUM_FILE_PARTS_PER_BATCH,
             "max_retries": config_base.API_INFRA_MAX_RETRIES,
-            "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS
+            "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS,
+            # Database configuration for DMS validation
+            "databases": {
+                "local": {  # or "uat", "prod" based on environment
+                    "dms": {
+                        "user": "your_dms_username",
+                        "password": "your_dms_password",
+                        "dsn": "your_dms_dsn"  # e.g., "host:port/service_name"
+                    },
+                    "bgate": {
+                        "user": "your_bgate_username",
+                        "password": "your_bgate_password",
+                        "dsn": "your_bgate_dsn"  # e.g., "host:port/service_name"
+                    }
+                }
+            }
         }
         # Refresh provider API keys from current config_base values (profile-injected)
         try:
@@ -175,7 +190,22 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
             "max_num_files_per_request": config_base.MAX_NUM_FILES_PER_REQUEST,
             "max_num_file_parts_per_batch": config_base.MAX_NUM_FILE_PARTS_PER_BATCH,
             "max_retries": config_base.API_INFRA_MAX_RETRIES,
-            "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS
+            "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS,
+            # Database configuration for DMS validation (same structure as above)
+            "databases": {
+                "local": {
+                    "dms": {
+                        "user": "DMS_OEM_SL",
+                        "password": "-oVDmYP6-,=*",
+                        "dsn": "10.42.253.86:1027/dms11g"
+                    },
+                    "bgate": {
+                        "user": "C##TEST",
+                        "password": "your_bgate_password",
+                        "dsn": "your_bgate_dsn"
+                    }
+                }
+            }
         }
         # Refresh provider API keys for text providers
         try:

@@ -19,7 +19,7 @@ from processors.file_mapping_utils import FileMappingFactory
 class DirectFileProcessingStrategy(BaseProcessingStrategy):
     """Strategy for processing files directly by sending them to LLM."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
         super().__init__(config)
         self.streaming = streaming
         # Use llm_provider for consistency with configuration structure

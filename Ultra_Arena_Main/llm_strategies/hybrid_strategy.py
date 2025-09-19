@@ -15,7 +15,7 @@ from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
 class HybridProcessingStrategy(BaseProcessingStrategy):
     """Strategy that combines direct file and text-first approaches."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
         super().__init__(config)
         
         # Store streaming parameter
