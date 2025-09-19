@@ -25,7 +25,7 @@ class BaseProcessingStrategy(ABC):
             self.benchmark_comparator = BenchmarkComparator(config["benchmark_data"])
     
     @abstractmethod
-    def process_file_group(self, *, file_group: List[str], group_index: int, 
+    def process_file_group(self, *, config_manager: Any = None, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process a group of files using the specific strategy."""
         pass

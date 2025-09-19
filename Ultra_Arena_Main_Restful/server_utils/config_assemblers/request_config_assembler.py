@@ -56,6 +56,7 @@ class RequestConfigAssembler:
             # Create request configuration
             request_config = RequestConfig(
                 combo_name=request_overrides.get('combo_name'),
+                chain_name=request_overrides.get('chain_name'),
                 input_pdf_dir_path=request_overrides.get('input_pdf_dir_path'),
                 output_dir=request_overrides.get('output_dir'),
                 benchmark_file_path=request_overrides.get('benchmark_file_path'),
@@ -96,6 +97,11 @@ class RequestConfigAssembler:
         """
         overrides = {}
         
+        # Handle chain first (takes precedence over combo if provided)
+        if 'chain_name' in request_data and request_data['chain_name']:
+            overrides['chain_name'] = request_data['chain_name']
+            logger.debug(f"🔗 Using request chain: {overrides['chain_name']}")
+
         # Handle combo name
         if use_default_combo:
             overrides['combo_name'] = self.server_config.default_combo_name
@@ -262,23 +268,26 @@ class RequestConfigAssembler:
             result (ConfigAssemblyResult): The assembled configuration result
         """
         try:
-            import config.config_base as config_base
+            import importlib
+            from typing import Any, cast
+            config_base = importlib.import_module('config.config_base')
+            cb = cast(Any, config_base)
             
             final_prompts = result.request_config.final_prompts
             final_processing = result.request_config.final_processing
             
             # Inject final prompts
-            config_base.SYSTEM_PROMPT = final_prompts.system_prompt
-            config_base.USER_PROMPT = final_prompts.user_prompt
-            config_base.JSON_FORMAT_INSTRUCTIONS = final_prompts.json_format_instructions
-            config_base.MANDATORY_KEYS = final_prompts.mandatory_keys
-            config_base.TEXT_FIRST_REGEX_CRITERIA = final_prompts.text_first_regex_criteria
+            cb.SYSTEM_PROMPT = final_prompts.system_prompt
+            cb.USER_PROMPT = final_prompts.user_prompt
+            cb.JSON_FORMAT_INSTRUCTIONS = final_prompts.json_format_instructions
+            cb.MANDATORY_KEYS = final_prompts.mandatory_keys
+            cb.TEXT_FIRST_REGEX_CRITERIA = final_prompts.text_first_regex_criteria
             
             # Inject final processing config
-            config_base.DEFAULT_STREAMING = final_processing.streaming
-            config_base.DEFAULT_MAX_CC_STRATEGIES = final_processing.max_cc_strategies
-            config_base.DEFAULT_MAX_CC_FILEGROUPS = final_processing.max_cc_filegroups
-            config_base.DEFAULT_MAX_FILES_PER_REQUEST = final_processing.max_files_per_request
+            cb.DEFAULT_STREAMING = final_processing.streaming
+            cb.DEFAULT_MAX_CC_STRATEGIES = final_processing.max_cc_strategies
+            cb.DEFAULT_MAX_CC_FILEGROUPS = final_processing.max_cc_filegroups
+            cb.DEFAULT_MAX_FILES_PER_REQUEST = final_processing.max_files_per_request
             
             logger.debug("✅ Final configuration injected into config_base")
             

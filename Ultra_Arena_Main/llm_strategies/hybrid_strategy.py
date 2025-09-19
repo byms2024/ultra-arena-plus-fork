@@ -30,7 +30,7 @@ class HybridProcessingStrategy(BaseProcessingStrategy):
             self.max_retries = config["file_direct_max_retry"]
             logging.info(f"🔄 Hybrid strategy using hybrid retry limit: {self.max_retries}")
     
-    def process_file_group(self, *, file_group: List[str], group_index: int, 
+    def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files using hybrid approach: try direct file first, fallback to text-first."""
         
@@ -40,6 +40,7 @@ class HybridProcessingStrategy(BaseProcessingStrategy):
         # Try direct file processing first
         try:
             direct_results, direct_stats, direct_group_id = self.direct_file_processor.process_file_group(
+                config_manager=config_manager,
                 file_group=file_group,
                 group_index=group_index,
                 group_id=group_id,
@@ -66,6 +67,7 @@ class HybridProcessingStrategy(BaseProcessingStrategy):
             
             # Try text-first processing for failed files
             text_results, text_stats, text_group_id = self.text_first_processor.process_file_group(
+                config_manager=config_manager,
                 file_group=failed_files,
                 group_index=group_index,
                 group_id=f"{group_id}_text_fallback",
@@ -121,6 +123,7 @@ class HybridProcessingStrategy(BaseProcessingStrategy):
             logging.info(f"🔄 Hybrid: Falling back to text-first processing for group {group_index}")
             
             return self.text_first_processor.process_file_group(
+                config_manager=config_manager,
                 file_group=file_group,
                 group_index=group_index,
                 group_id=f"{group_id}_fallback",

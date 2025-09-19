@@ -529,7 +529,7 @@ def create_text_first_file_path_mapper() -> TextFirstFilePathMapper:
     return TextFirstFilePathMapper()
 
 
-class FilePathAwareLLMClient:
+class FilePathAwareLLMClient():
     """Wrapper for LLM clients that handles FILE_PATH mapping for image_first and text_first strategies."""
     
     def __init__(self, llm_client, file_path_mapper: GenericFilePathMapper):

@@ -165,6 +165,7 @@ STRATEGY_DIRECT_FILE = "direct_file"
 STRATEGY_TEXT_FIRST = "text_first"
 STRATEGY_IMAGE_FIRST = "image_first"
 STRATEGY_HYBRID = "hybrid"
+STRATEGY_CHAIN = "chain"
 
 MODE_PARALLEL = "parallel"
 MODE_BATCH = "batch"

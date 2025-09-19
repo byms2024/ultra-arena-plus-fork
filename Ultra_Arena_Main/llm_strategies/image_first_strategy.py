@@ -32,7 +32,7 @@ class ImageFirstProcessingStrategy(BaseProcessingStrategy):
         # This handles all LLM client, token counter, and processing logic
         self.direct_file_processor = DirectFileProcessingStrategy(config, streaming=streaming)
     
-    def process_file_group(self, *, file_group: List[str], group_index: int, 
+    def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files by converting them to images first, then sending to LLM in batches."""
         # Convert PDFs to images first and maintain mapping
@@ -99,6 +99,7 @@ class ImageFirstProcessingStrategy(BaseProcessingStrategy):
         try:
             # Call the direct file processor with image_first strategy to use ImageFirstFilePathMapper
             results, group_stats, _ = self.direct_file_processor.process_file_group(
+                config_manager=None,
                 file_group=image_file_group,
                 group_index=group_index,
                 group_id=group_id,

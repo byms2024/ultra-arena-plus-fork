@@ -201,6 +201,19 @@ param_grps = {
         "provider": config_base.PROVIDER_GROK,
         "model": config_base.GROK_MODEL_ID_GROK_2,
         "temperature": config_base.GROK_MODEL_TEMPERATURE
+    },
+    "grp_chain_df_tf_if_google_para": {
+        "strategy": config_base.STRATEGY_CHAIN,
+        "mode": config_base.MODE_BATCH_PARALLEL,
+        "provider": config_base.PROVIDER_GOOGLE,
+        "model": config_base.GOOGLE_MODEL_ID_GEMINI_25_FLASH,
+        "chain_steps": [
+            {"type": "direct_file"},
+            {"type": "text_first"},
+            {"type": "image_first"}
+        ],
+        "chain_on_missing_keys": False,
+        "num_retry_for_mandatory_keys": 0
     }
 
 }
