@@ -177,6 +177,50 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
             config["provider_configs"][llm_provider]["streaming"] = streaming
         
         return config
+    elif strategy_type == "regex":
+        config = {
+            "llm_provider": llm_provider or config_base.DEFAULT_LLM_PROVIDER,
+            "provider_configs": DIRECT_FILE_PROVIDER_CONFIGS,  # Use direct file configs as fallback
+            "regex_patterns": config_base.REGEX_PATTERNS if hasattr(config_base, 'REGEX_PATTERNS') else {},
+            "mandatory_keys": config_base.MANDATORY_KEYS,
+            "num_retry_for_mandatory_keys": config_base.NUM_RETRY_FOR_MANDATORY_KEYS,
+            "max_num_files_per_request": config_base.MAX_NUM_FILES_PER_REQUEST,
+            "max_num_file_parts_per_batch": config_base.MAX_NUM_FILE_PARTS_PER_BATCH,
+            "max_retries": config_base.API_INFRA_MAX_RETRIES,
+            "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS,
+            "fallback_llm": True  # Enable LLM fallback for regex strategy
+        }
+        # Refresh provider API keys from current config_base values (profile-injected)
+        try:
+            if "google" in config["provider_configs"]:
+                config["provider_configs"]["google"]["api_key"] = getattr(config_base, "GCP_API_KEY", "")
+            if "openai" in config["provider_configs"]:
+                config["provider_configs"]["openai"]["api_key"] = getattr(config_base, "OPENAI_API_KEY", "")
+            if "deepseek" in config["provider_configs"]:
+                config["provider_configs"]["deepseek"]["api_key"] = getattr(config_base, "DEEPSEEK_API_KEY", "")
+            if "claude" in config["provider_configs"]:
+                config["provider_configs"]["claude"]["api_key"] = getattr(config_base, "CLAUDE_API_KEY", "")
+            if "huggingface" in config["provider_configs"]:
+                config["provider_configs"]["huggingface"]["api_key"] = getattr(config_base, "HUGGINGFACE_TOKEN", "")
+            if "togetherai" in config["provider_configs"]:
+                config["provider_configs"]["togetherai"]["api_key"] = getattr(config_base, "TOGETHERAI_API_KEY", "")
+            if "grok" in config["provider_configs"]:
+                config["provider_configs"]["grok"]["api_key"] = getattr(config_base, "XAI_API_KEY", "")
+        except Exception as _e:
+            logging.debug(f"Key refresh skipped: {_e}")
+        # Override provider and model if specified
+        if llm_provider:
+            config["llm_provider"] = llm_provider
+        if llm_model and llm_provider in config["provider_configs"]:
+            # Create a deep copy to avoid race condition with shared provider_configs
+            config["provider_configs"] = copy.deepcopy(config["provider_configs"])
+            config["provider_configs"][llm_provider]["model"] = llm_model
+
+        # Add streaming configuration to provider configs
+        if streaming and llm_provider in config["provider_configs"]:
+            config["provider_configs"][llm_provider]["streaming"] = streaming
+
+        return config
     elif strategy_type == STRATEGY_TEXT_FIRST:
         config = {
             "llm_provider": llm_provider or LOCAL_LLM_PROVIDER,
