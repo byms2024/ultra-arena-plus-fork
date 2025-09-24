@@ -11,7 +11,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -30,7 +30,7 @@ class TestStatus(Enum):
 class TestConfig:
     """Configuration for async test runs."""
     file_name: str
-    strat_chain: Optional[List[str]] = None 
+    chain_name: Optional[str] = None 
     combo_name: Optional[str] = None
     max_wait_time: int = 3000  # 50 minutes default
     poll_interval: int = 10    # 10 seconds default
@@ -42,6 +42,7 @@ class TestConfig:
     streaming: bool = False
     timeout: int = 30
     desensitization: bool = True
+    chain_config: Dict[str, Any] = field(default_factory=dict)
 
 
 class AsyncTestRunner:
@@ -53,12 +54,13 @@ class AsyncTestRunner:
         self.test_fixtures_dir = self.script_dir / "test_fixtures" / "br_fixture"
         self.input_pdf_dir_path = self.test_fixtures_dir / "input_files" / config.file_name
 
-        if config.combo_name and config.strat_chain:
+        if not config.combo_name and not config.chain_config:
             print(f"❌ Error: Choose either CHAIN or COMBO")
             return False
-        elif config.combo_name:
+        
+        elif config.combo_name is not None:
             self.api_endpoint = f"{config.base_url}/api/process/combo/async"
-        elif config.strat_chain:
+        else:
             self.api_endpoint = f"{config.base_url}/api/process/chain"
         
     def validate_input_directory(self) -> bool:
@@ -71,8 +73,8 @@ class AsyncTestRunner:
     def build_payload(self) -> Dict[str, Any]:
         """Build the request payload for the API call."""
         return {
-            'strat_chain' : self.config.strat_chain,
             'combo_name': self.config.combo_name,
+            'chain_name' : self.config.chain_name,
             'input_pdf_dir_path': str(self.input_pdf_dir_path),
             'run_type': self.config.run_type,
             'output_dir': str(self.test_fixtures_dir / "output_files"),
@@ -81,7 +83,8 @@ class AsyncTestRunner:
             'max_cc_strategies': self.config.max_cc_strategies,
             'max_cc_filegroups': self.config.max_cc_filegroups,
             'max_files_per_request': self.config.max_files_per_request,
-            'desensitization': self.config.desensitization
+            'desensitization': self.config.desensitization,
+            'chain_config': self.config.chain_config
         }
     
     def print_test_info(self):
@@ -91,7 +94,7 @@ class AsyncTestRunner:
         if self.config.combo_name:
             print(f"Combo: {self.config.combo_name}")
         else: 
-            print(f"Chain: {self.config.strat_chain}")
+            print(f"Chain: {self.config.chain_name}")
         print(f"Files: {self.config.file_name}")
         print("=" * 80)
         print(f"📁 Input Directory: {self.input_pdf_dir_path}")

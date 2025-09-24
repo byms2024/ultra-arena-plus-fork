@@ -13,25 +13,80 @@ import sys
 def main():
     """Run async test with 1 strategy and 1 file using the utility module."""
     
-    # Create the configuration for 1 strategy with 1 file
-    # config = TestConfig(
-    #     combo_name="single_strategy_text_first_google",
-    #     file_name="1_file",
-    #     max_wait_time=3000,
-    #     poll_interval=10,
-    #     desensitization= False
-    # )
+    chain_config = {
+        "chains": {
+                "subchains": [
+                    {
+                        "censor": True,
+                        "metadata_fields": {
+                            "field1": "value1",
+                            "field2": "value2"
+                        },
+                        "subchain_name": "subchain1_1",
+                        "fileNumberPerFile": 10,
+                        "pre-processing": {
+                            "pre-type": "text"
+                        },
+                        "processing": {
+                            "proc-type": "text_first",
+                            "llm_provider": "google",
+                            "llm_model": "gemini-2.5-flash"
+                        },
+                        "post-processing": {
+                            "post-type": "metadata",
+                            "retries": {
+                                "pre_retry": {
+                                    "retry_count": 2
+                                },
+                                "proc_retry": {
+                                    "retry_count": 3
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "censor": True,
+                        "metadata_fields": {
+                            "field1": "value1",
+                            "field2": "value2"
+                        },
+                        "subchain_name": "subchain1_1",
+                        "fileNumberPerFile": 10,
+                        "pre-processing": {
+                            "pre-type": "text"
+                        },
+                        "processing": {
+                            "proc-type": "text_first",
+                            "llm_provider": "google",
+                            "llm_model": "gemini-2.5-flash"
+                        },
+                        "post-processing": {
+                            "post-type": "metadata",
+                            "retries": {
+                                "pre_retry": {
+                                    "retry_count": 2
+                                },
+                                "proc_retry": {
+                                    "retry_count": 3
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
 
-        # Create the configuration for 1 strategy with 1 file
+    # Create the configuration for 1 strategy with 1 file
     config = TestConfig(
-        strat_chain=['textFirst','directFile'],
+        # combo_name="single_strategy_text_first_google",
+        chain_name="chain_strategy",
+        chain_config = chain_config,
         file_name="1_file",
         max_wait_time=3000,
         poll_interval=10,
-        desensitization= True
+        desensitization= False,
     )
 
-    
     # Run the test
     result = run_async_test(config)
     
