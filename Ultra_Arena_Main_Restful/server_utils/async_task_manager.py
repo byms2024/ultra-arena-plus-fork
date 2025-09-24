@@ -63,7 +63,7 @@ class AsyncTaskManager:
         
         with self.task_lock:
             self.tasks[request_id] = task_info
-        
+
         # Start processing in background thread
         thread = threading.Thread(
             target=self._process_task,
@@ -101,14 +101,19 @@ class AsyncTaskManager:
             # Add the parent directory to the path to import Ultra_Arena_Main
             sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
             from Ultra_Arena_Main.main_modular import run_combo_processing
-            
+
             # Get the actual configuration to calculate total work units
             # TODO: Implement proper progress tracking
             try:
                 # We need to get the actual file count and strategy count
                 from Ultra_Arena_Main.config.config_combo_run import combo_config
-                combo_name = request_data.get('combo_name')
+
+                if request_data.get('chain_name'):
+                    combo_name = request_data.get('chain_name')
+                else:
+                    combo_name = request_data.get('combo_name')
                 
+
                 if combo_name and combo_name in combo_config:
                     strategy_groups = combo_config[combo_name].get("strategy_groups", [])
                     num_strategies = len(strategy_groups)
@@ -147,11 +152,22 @@ class AsyncTaskManager:
             
             # Get configuration defaults from config_manager
             config_defaults = config_manager.get_config_defaults()
-            
+        
             try:
+                if request_data.get('chain_name'):
+                    combo_name = request_data.get('chain_name')
+                    chain_config = request_data.get('chain_config')
+                else:
+                    combo_name = request_data.get('combo_name')
+                    chain_config = None
+
+                print('⚙️'*100)
+                print(chain_config)
+                print('⚙️'*100)
+
                 result_code = run_combo_processing(
                     benchmark_eval_mode=request_data.get('run_type') == 'evaluation',
-                    combo_name=request_data.get('combo_name'),
+                    combo_name=combo_name,
                     streaming=request_data.get('streaming', config_defaults.get('streaming', False)),
                     max_cc_strategies=request_data.get('max_cc_strategies', config_defaults.get('max_cc_strategies', 3)),
                     max_cc_filegroups=request_data.get('max_cc_filegroups', config_defaults.get('max_cc_filegroups', 5)),
@@ -160,7 +176,8 @@ class AsyncTaskManager:
                     pdf_file_paths=request_data.get('pdf_file_paths', []),
                     output_dir=request_data.get('output_dir'),
                     benchmark_file_path=Path(request_data.get('benchmark_file_path')) if request_data.get('benchmark_file_path') else None,
-                    config_manager = config_manager
+                    config_manager = config_manager,
+                    chain_config= chain_config
                 )
                 logger.info(f"🔍 DEBUG: run_combo_processing completed with result_code: {result_code}")
             except Exception as e:

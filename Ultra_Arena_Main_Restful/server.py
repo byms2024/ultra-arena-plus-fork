@@ -198,7 +198,51 @@ def process_combo_async():
         validator = RequestValidator(config_defaults)
         validation_result = validator.validate_combo_request(data)
 
+        if not validation_result.is_valid:
+            error_msg = "; ".join(validation_result.errors)
+            return jsonify({"error": f"Validation failed: {error_msg}"}), 400
         
+        # Use validated parameters
+        validated_data = validation_result.validated_params
+        
+        # Create configuration
+        try:
+            config = request_processor.create_unified_request_config(validated_data, use_default_combo=False)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        
+        # Get request_id from config
+        request_id = config.get("request_metadata", {}).get("request_id", "unknown")
+        
+        # Create async task with validated data
+        task_manager.create_task(validated_data, config_manager, request_id)
+        
+        # Format response
+        response_data = request_processor.format_async_combo_response(request_id, config)
+        
+        return jsonify(response_data), 202
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"❌ ERROR in /api/process/combo/async endpoint: {e}")
+        logger.error(f"❌ FULL STACK TRACE: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/process/chain', methods=['POST'])
+def process_chain():
+
+    try:
+        logger.info(f"🚀 STARTING /api/process/chain request")
+        
+        # Parse request data
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Validate request using new validator
+        config_defaults = config_manager.get_config_defaults()
+        validator = RequestValidator(config_defaults)
+        validation_result = validator.validate_combo_request(data)
         
         if not validation_result.is_valid:
             error_msg = "; ".join(validation_result.errors)

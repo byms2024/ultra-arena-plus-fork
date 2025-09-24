@@ -145,6 +145,11 @@ class RequestValidator:
         if chain_name:
             validated_params['chain_name'] = chain_name
             param_sources['chain_name'] = ParameterSource.REQUEST
+
+            chain_config = request_data.get('chain_config')
+            validated_params['chain_config'] = chain_config
+            param_sources['chain_config'] = ParameterSource.REQUEST
+
             # combo_name optional in this case (ignored down the line)
             if 'combo_name' in request_data and request_data.get('combo_name'):
                 validated_params['combo_name'] = request_data.get('combo_name')

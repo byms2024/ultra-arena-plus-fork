@@ -107,6 +107,7 @@ class RequestConfig(BaseModel):
     # Request-specific overrides
     combo_name: Optional[str] = Field(default=None, description="Combo name for this request")
     chain_name: Optional[str] = Field(default=None, description="Chain name for this request (overrides combo if provided)")
+    chain_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Chain config for this request")
     input_pdf_dir_path: Optional[Path] = Field(default=None, description="Input PDF directory path")
     output_dir: Optional[Path] = Field(default=None, description="Output directory path")
     benchmark_file_path: Optional[Path] = Field(default=None, description="Benchmark file path")
