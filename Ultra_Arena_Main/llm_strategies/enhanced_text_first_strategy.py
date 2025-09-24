@@ -47,62 +47,78 @@ class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
         logging.info(f"   Regex criteria keys: {list(self.regex_criteria.keys())}")
     
     def process_file_group(self, *, config_manager, file_group: List[str], group_index: int, 
-                          group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
+                          group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str,
+                          pre_results: List = None) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files with enhanced text-first approach."""
         
-        desensitization_config = config_manager._server_config.desensitization.desensitization_config
-        sensitive_fields =config_manager._server_config.desensitization.sensitive_fields
+        if not pre_results:
+            desensitization_config = config_manager._server_config.desensitization.desensitization_config
+            sensitive_fields =config_manager._server_config.desensitization.sensitive_fields
 
-        group_start_time = time.time()
-        logging.info(f"📝 Starting enhanced text-first processing for group {group_index} ({group_id}): {len(file_group)} files")
-        logging.info(f"Desestization Config: {desensitization_config}")
-        
+            group_start_time = time.time()
+            logging.info(f"📝 Starting enhanced text-first processing for group {group_index} ({group_id}): {len(file_group)} files")
+            logging.info(f"Desestization Config: {desensitization_config}")
+            
 
-        # Extract text from PDFs with fallback and maintain mapping
-        text_content_list = []
-        text_content_sensitized_list = []
-        original_filenames = []
-        successful_files = []
-        
-        for file_path in file_group:
-            text_content = self._extract_text_with_fallback(file_path)
+            # Extract text from PDFs with fallback and maintain mapping
+            text_content_list = []
+            text_content_sensitized_list = []
+            original_filenames = []
+            successful_files = []
+            
+            for file_path in file_group:
+                text_content = self._extract_text_with_fallback(file_path)
 
-            if text_content:
+                if text_content:
 
-                if desensitization_config:
-                    text_content_sensitized = self._sensitize_text_content(text_content, Path(file_path).name)
-                    text_content_sensitized_list.append(text_content_sensitized)
-                    logging.info("🛡 Text Content Desensitezed 🛡")
-                    logging.info(text_content_sensitized)
+                    if desensitization_config:
+                        text_content_sensitized = self._sensitize_text_content(text_content, Path(file_path).name)
+                        text_content_sensitized_list.append(text_content_sensitized)
+                        logging.info("🛡 Text Content Desensitezed 🛡")
+                        logging.info(text_content_sensitized)
 
+                    else:
+                        text_content_list.append(text_content)
+
+                    original_filenames.append(Path(file_path).name)
+                    successful_files.append(file_path)
+                    logging.info(f"✅ Successfully extracted text from: {Path(file_path).name} ({len(text_content)} characters)")
                 else:
-                    text_content_list.append(text_content)
+                    logging.error(f"❌ No text could be extracted from: {Path(file_path).name} using any available method")
+            
 
-                original_filenames.append(Path(file_path).name)
-                successful_files.append(file_path)
-                logging.info(f"✅ Successfully extracted text from: {Path(file_path).name} ({len(text_content)} characters)")
-            else:
-                logging.error(f"❌ No text could be extracted from: {Path(file_path).name} using any available method")
-        
+            if (not text_content_list) and (not text_content_sensitized_list):
+                logging.error(f"❌ No text could be extracted for group {group_index}")
+                # Create error results for all files
+                results = [(file_path, {"error": "No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}) for file_path in file_group]
+                group_stats = {
+                    "total_files": len(file_group),
+                    "successful_files": 0,
+                    "failed_files": len(file_group),
+                    "total_tokens": 0,
+                    "estimated_tokens": 0,
+                    "processing_time": int(time.time() - group_start_time)
+                }
+                return results, group_stats, group_id
+            
+            if desensitization_config:
+                text_to_process = text_content_sensitized_list
+            else: 
+                text_to_process = text_content_list
 
-        if (not text_content_list) and (not text_content_sensitized_list):
-            logging.error(f"❌ No text could be extracted for group {group_index}")
-            # Create error results for all files
-            results = [(file_path, {"error": "No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}) for file_path in file_group]
-            group_stats = {
-                "total_files": len(file_group),
-                "successful_files": 0,
-                "failed_files": len(file_group),
-                "total_tokens": 0,
-                "estimated_tokens": 0,
-                "processing_time": int(time.time() - group_start_time)
-            }
-            return results, group_stats, group_id
+        else:
+            # Get the already successfully preprocessed files
+            text_to_process = [result['preprocessing_result']
+                               for f_path, result in pre_results
+                               if result['preprocessed']]
+            
+            successful_files = [f_path
+                               for f_path, result in pre_results
+                               if result['preprocessed']]
+            
+            original_filenames = [Path(f_path).name for f_path in successful_files]
+
         
-        if desensitization_config:
-            text_to_process = text_content_sensitized_list
-        else: 
-            text_to_process = text_content_list
 
         # Choose which prompt to use based on provider
         from config import config_base

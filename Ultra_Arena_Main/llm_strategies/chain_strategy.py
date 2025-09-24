@@ -6,9 +6,10 @@ from typing import Dict, List, Tuple, Optional, Any
 import logging
 import time
 from pathlib import Path
+from collections import Counter
 import re
 
-from ..common.text_extractor import TextExtractor
+from common.text_extractor import TextExtractor
 from .base_strategy import BaseProcessingStrategy
 from .strategy_factory import ProcessingStrategyFactory
 from .strategy_factory import PreProcessingStrategyFactory
@@ -89,6 +90,48 @@ class LinkStrategy(BaseProcessingStrategy):
 class TextPreProcessingStrategy(LinkStrategy):
     """Pre-processing strategy for text-based operations."""
 
+    def desensitize_content(self, text_content: str, file_Name: str) -> str:
+        from .data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
+        
+        aggregate_values: dict[str, set[str]] = {
+            "CNPJ": set(),
+            "CPF": set(),
+            "CEP": set(),
+            "VIN": set(),
+            "CLAIM": set(),
+            "NAME": set(),
+            "ADDRESS": set(),
+            "PHONE": set(),
+            "ORG": set(),
+            "PLATE": set(),
+        }
+
+        file_text_cache: dict[Path, str] = {}
+
+        vals = _collect_sensitive_values_from_text(text_content)
+        
+        file_text_cache[file_Name] = text_content
+
+        for k, s in vals.items():
+            aggregate_values[k].update(s)
+
+        per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
+
+        hashed_text = _hash_text_with_maps(text_content, per_label_maps)
+
+        try:
+            import csv
+            rev_path = "reverse_map.csv"
+            with rev_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["placeholder", "original"])
+                for placeholder, original in reverse_map.items():
+                    writer.writerow([placeholder, original])
+        except Exception:
+            pass
+        
+        return hashed_text
+
     def extraction_evaluation_regex(self, text_content):
 
         if not text_content:
@@ -109,7 +152,6 @@ class TextPreProcessingStrategy(LinkStrategy):
                 logging.error(f"❌ Regex evaluation failed for {field_name}: {e}")
         
         return successful_matches
-
 
     def extract_text(self, pdf_path):
         """Try to extract text with two different approach."""
@@ -146,19 +188,46 @@ class TextPreProcessingStrategy(LinkStrategy):
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str = "") -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Apply text pre-processing to files."""
         start_time = time.time()
+        processed_texts = []
+        original_filenames = []
+        successful_files = []
         results = []
         
         for file_path in file_group:
-
+            
+            # Extract file content
             text_content = self.extract_text(file_path)
 
-            result = {"preprocessed": True, "preprocessing_type": "text"}
-            results.append((file_path, result))
-        
+            # If extracted, checks if it desensitization is needed
+            if text_content:
+                if self.desensitization_config:
+                    text_to_add = self.desensitize_content(text_content, Path(file_path).name)
+                else:
+                    text_to_add = text_content
+                
+                # Store results
+                processed_texts.append(text_to_add)
+                original_filenames.append(Path(file_path).name)
+                successful_files.append(file_path)
+                result = {  "preprocessed": True,
+                            "preprocessing_type": "text",
+                            "preprocessing_result" : text_to_add}
+                results.append((file_path, result))
+            
+            # If extraction failed, store results
+            else:
+                result = {  "preprocessed": False,
+                            "preprocessing_type": "text",
+                            "preprocessing_result":"No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}
+                results.append((file_path, result))
+
+        preprocessed_values = (result_dict.get('preprocessed') for _, result_dict in results)
+        counts = Counter(preprocessed_values)
+
         agg_stats = {
             "total_files": len(file_group),
-            "successful_files": len(file_group),
-            "failed_files": 0,
+            "successful_files": counts.get(True, 0),
+            "failed_files": counts.get(False, 0),
             "total_tokens": 0,
             "estimated_tokens": 0,
             "processing_time": int(time.time() - start_time)
@@ -271,7 +340,6 @@ class NoOpProcessingStrategy(LinkStrategy):
         
         return results, agg_stats, group_id
 
-
 # Post-processing strategies
 class MetadataPostProcessingStrategy(LinkStrategy):
     """Post-processing strategy for adding metadata."""
@@ -348,7 +416,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         self.database_ops = database_ops
         
         # Parse the new chain structure
-        self.chains_config = config.get("chains", {})
+        self.chains_config = config.get("chain_config", {})
         if not self.chains_config:
             raise ValueError("chains configuration must be provided for AdvancedChainedProcessingStrategy")
         
@@ -499,7 +567,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 group_index=group_index,
                 group_id=f"{group_id}_{subchain_name}_processing",
                 system_prompt=system_prompt,
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
+                pre_results = pre_results
             )
             
             agg_stats["estimated_tokens"] += processing_stats.get("estimated_tokens", 0)
