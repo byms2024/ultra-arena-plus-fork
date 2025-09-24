@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 
 from ..common.text_extractor import TextExtractor
+from ..common.pdf_metadata import read_pdf_metadata_dict
 from .base_strategy import BaseProcessingStrategy
 
 
@@ -215,6 +216,30 @@ class TextPreProcessingStrategy(LinkStrategy):
         results = []
         
         for file_path in file_group:
+            # Optionally read and store PDF metadata (including DmsData)
+            if self.config.get("enable_pdf_metadata", False):
+                meta = read_pdf_metadata_dict(file_path)
+                # Push parsed DMS data into passthrough extracted_data
+                dms = meta.get("dms_data") or {}
+                if dms:
+                    # Map keys we care about directly
+                    mapped = {
+                        "claim_id": dms.get("claim_id"),
+                        "claim_no": dms.get("claim_no"),
+                        "vin": dms.get("vin"),
+                        "dealer_code": dms.get("dealer_code"),
+                        "dealer_name": dms.get("dealer_name"),
+                        "cnpj1": dms.get("dealer_cnpj"),  # BYD CNPJ per example
+                        "gross_credit_dms": dms.get("gross_credit"),
+                        "labour_amount_dms": dms.get("labour_amount_dms"),
+                        "part_amount_dms": dms.get("part_amount_dms"),
+                        "dms_file_id": dms.get("file_id"),
+                        "dms_embedded_at": dms.get("embedded_at"),
+                    }
+                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                # Optionally keep raw document info
+                if self.config.get("store_raw_pdf_info", False):
+                    self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
 
             text_content = self.extract_text(file_path)
 
@@ -359,12 +384,26 @@ class MetadataPostProcessingStrategy(LinkStrategy):
         results = []
         
         for file_path in file_group:
-            # Placeholder: Implement metadata post-processing logic here
-            # For now, just add the configured metadata fields
+            # Merge configured metadata with any pre-extracted passthrough metadata
+            merged_metadata = self.metadata_fields.copy()
+            if self.passthrough:
+                # Find corresponding entry
+                for entry in self.passthrough.get("files", []):
+                    if entry.get("file_path") == file_path:
+                        # Bring DMS mapped values into metadata namespace for downstream use
+                        x = entry.get("extracted_data", {})
+                        for k in [
+                            "claim_id", "claim_no", "vin", "dealer_code", "dealer_name", "cnpj1",
+                            "gross_credit_dms", "labour_amount_dms", "part_amount_dms", "dms_file_id", "dms_embedded_at",
+                        ]:
+                            if k in x and x[k] is not None:
+                                merged_metadata[k] = x[k]
+                        break
+
             result = {
                 "postprocessed": True,
                 "postprocessing_type": "metadata",
-                "metadata": self.metadata_fields.copy()
+                "metadata": merged_metadata
             }
             results.append((file_path, result))
         
