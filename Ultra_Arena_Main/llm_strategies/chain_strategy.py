@@ -10,69 +10,97 @@ import re
 
 from ..common.text_extractor import TextExtractor
 from .base_strategy import BaseProcessingStrategy
-from .strategy_factory import ProcessingStrategyFactory
-from .strategy_factory import PreProcessingStrategyFactory
-from .strategy_factory import PostProcessingStrategyFactory
 
 
 class PreProcessingStrategyFactory:
     """Factory for creating pre-processing strategies."""
+    _passthrough: Optional[Dict[str, Any]] = None
     
-    @staticmethod
-    def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
-        """Create a pre-processing strategy based on type."""
+    @classmethod
+    def attach_passthrough(cls, passthrough: Dict[str, Any]) -> None:
+        """Set a shared passthrough object that will be attached to created strategies."""
+        cls._passthrough = passthrough
+
+    @classmethod
+    def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
+        """Create a pre-processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "text":
-            # Text pre-processing strategy - placeholder for text extraction/cleaning
-            return TextPreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = TextPreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "image":
-            # Image pre-processing strategy - placeholder for image preprocessing
-            return ImagePreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = ImagePreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "file":
-            # File pre-processing strategy - placeholder for file preprocessing
-            return FilePreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = FilePreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "none":
-            # No pre-processing
-            return NoOpPreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = NoOpPreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         else:
             raise ValueError(f"Unsupported pre-processing strategy type: {strategy_type}")
+
+        if cls._passthrough is not None:
+            _attach = getattr(strategy, "attach_passthrough", None)
+            if callable(_attach):
+                _attach(cls._passthrough)
+        return strategy
 
 
 class ProcessingStrategyFactory:
     """Factory for creating processing strategies."""
+    _passthrough: Optional[Dict[str, Any]] = None
     
-    @staticmethod
-    def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
-        """Create a processing strategy based on type."""
+    @classmethod
+    def attach_passthrough(cls, passthrough: Dict[str, Any]) -> None:
+        """Set a shared passthrough object that will be attached to created strategies."""
+        cls._passthrough = passthrough
+
+    @classmethod
+    def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
+        """Create a processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "text_first":
             from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
-            return EnhancedTextFirstProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = EnhancedTextFirstProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "image_first":
             from .image_first_strategy import ImageFirstProcessingStrategy
-            return ImageFirstProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = ImageFirstProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "file_first":
             from .direct_file_strategy import DirectFileProcessingStrategy
-            return DirectFileProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = DirectFileProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "none":
             # No processing
-            return NoOpProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = NoOpProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         else:
             raise ValueError(f"Unsupported processing strategy type: {strategy_type}")
+
+        if cls._passthrough is not None:
+            _attach = getattr(strategy, "attach_passthrough", None)
+            if callable(_attach):
+                _attach(cls._passthrough)
+        return strategy
 
 
 class PostProcessingStrategyFactory:
     """Factory for creating post-processing strategies."""
+    _passthrough: Optional[Dict[str, Any]] = None
     
-    @staticmethod
-    def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
-        """Create a post-processing strategy based on type."""
+    @classmethod
+    def attach_passthrough(cls, passthrough: Dict[str, Any]) -> None:
+        """Set a shared passthrough object that will be attached to created strategies."""
+        cls._passthrough = passthrough
+    
+    @classmethod
+    def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
+        """Create a post-processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "metadata":
-            # Metadata post-processing strategy
-            return MetadataPostProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = MetadataPostProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         elif strategy_type == "none":
             # No post-processing
-            return NoOpPostProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
+            strategy = NoOpPostProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
         else:
             raise ValueError(f"Unsupported post-processing strategy type: {strategy_type}")
+
+        if cls._passthrough is not None:
+            _attach = getattr(strategy, "attach_passthrough", None)
+            if callable(_attach):
+                _attach(cls._passthrough)
+        return strategy
 
 
 # Base class for all link strategies (pre-processing, processing, post-processing)
@@ -83,11 +111,49 @@ class LinkStrategy(BaseProcessingStrategy):
         super().__init__(config)
         self.streaming = streaming
         self.database_ops = database_ops
+        # Shared passthrough state across subchains/links
+        self.passthrough: Optional[Dict[str, Any]] = None
+
+    def attach_passthrough(self, passthrough: Dict[str, Any]) -> None:
+        """Attach shared passthrough object so links can read/update file statuses and extracted data."""
+        self.passthrough = passthrough
+
+    # --- Extension hooks for future status management/blacklisting ---
+    def _get_or_create_file_entry(self, file_path: str) -> Dict[str, Any]:
+        if self.passthrough is None:
+            return {"file_path": file_path}
+        files_list = self.passthrough.setdefault("files", [])
+        for entry in files_list:
+            if entry.get("file_path") == file_path:
+                return entry
+        new_entry = {"file_path": file_path, "status": "Pending", "extracted_data": {}}
+        files_list.append(new_entry)
+        return new_entry
+
+    def update_status(self, file_path: str, status: str, unmatch_detail: Optional[List[str]] = None) -> None:
+        if self.passthrough is None:
+            return
+        entry = self._get_or_create_file_entry(file_path)
+        entry["status"] = status
+        if unmatch_detail is not None:
+            entry["unmatch_detail"] = unmatch_detail
+
+    def update_extracted_data(self, file_path: str, updates: Dict[str, Any]) -> None:
+        if self.passthrough is None:
+            return
+        entry = self._get_or_create_file_entry(file_path)
+        data = entry.setdefault("extracted_data", {})
+        data.update(updates)
 
 
 # Pre-processing strategies
 class TextPreProcessingStrategy(LinkStrategy):
     """Pre-processing strategy for text-based operations."""
+
+    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
+        super().__init__(config, streaming, database_ops)
+        # Allow providing regex criteria via config; default to empty dict
+        self.regex_criteria = config.get("text_first_regex_criteria", config.get("regex_criteria", {})) or {}
 
     def extraction_evaluation_regex(self, text_content):
 
@@ -393,6 +459,13 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             "processing_time": 0
         }
 
+        # Initialize passthrough with all files marked as Pending
+        self.passthrough = {
+            "files": [
+                {"file_path": fp, "status": "Pending", "extracted_data": {}} for fp in file_group
+            ]
+        }
+
         # Execute each subchain in sequence
         for subchain_name, subchain_config in self.chains_config.items():
             if not remaining_files:
@@ -403,7 +476,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             # Process files through the three links of this subchain
             successful_results, failed_files = self._execute_subchain(subchain_name, subchain_config, remaining_files, 
                                                    config_manager, group_index, group_id, 
-                                                   system_prompt, user_prompt, agg_stats)
+                                                   system_prompt, user_prompt, agg_stats, self.passthrough)
             
             # Store successful results
             for file_path, result in successful_results.items():
@@ -428,7 +501,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
 
     def _execute_subchain(self, subchain_name: str, subchain_config: Dict[str, Any], 
                          file_group: List[str], config_manager, group_index: int, group_id: str,
-                         system_prompt: Optional[str], user_prompt: str, agg_stats: Dict[str, Any]) -> Tuple[Dict[str, Dict], List[str]]:
+                         system_prompt: Optional[str], user_prompt: str, agg_stats: Dict[str, Any],
+                         passthrough: Dict[str, Any]) -> Tuple[Dict[str, Dict], List[str]]:
         """Execute a single subchain (pre-processing -> processing -> post-processing).
         
         Returns:
@@ -451,6 +525,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 streaming=self.streaming, 
                 database_ops=self.database_ops
             )
+            # share passthrough with pre-processing link
+            _attach = getattr(pre_strategy, "attach_passthrough", None)
+            if callable(_attach):
+                _attach(passthrough)
             
             pre_results, pre_stats, _ = pre_strategy.process_file_group(
                 config_manager=config_manager,
@@ -492,6 +570,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 streaming=self.streaming, 
                 database_ops=self.database_ops
             )
+            # share passthrough with processing link
+            _attach = getattr(processing_strategy, "attach_passthrough", None)
+            if callable(_attach):
+                _attach(passthrough)
             
             processing_results, processing_stats, _ = processing_strategy.process_file_group(
                 config_manager=config_manager,
@@ -557,6 +639,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     streaming=self.streaming, 
                     database_ops=self.database_ops
                 )
+                # share passthrough with post-processing link
+                _attach = getattr(post_strategy, "attach_passthrough", None)
+                if callable(_attach):
+                    _attach(passthrough)
                 
                 post_results, post_stats, _ = post_strategy.process_file_group(
                     config_manager=config_manager,
