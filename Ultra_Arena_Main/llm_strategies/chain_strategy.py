@@ -406,6 +406,66 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                 "metadata": merged_metadata
             }
             results.append((file_path, result))
+
+            # Status evaluation: compare processing output vs DMS metadata and mark as Matched if consistent
+            try:
+                if self.passthrough:
+                    for entry in self.passthrough.get("files", []):
+                        if entry.get("file_path") == file_path:
+                            proc_raw = entry.get("processing_output", {}) or {}
+                            dms = entry.get("extracted_data", {}) or {}
+
+                            def pick(obj, keys):
+                                for k in keys:
+                                    if k in obj:
+                                        return obj[k]
+                                    if k.upper() in obj:
+                                        return obj[k.upper()]
+                                    if k.lower() in obj:
+                                        return obj[k.lower()]
+                                return None
+
+                            # Normalize processing result into extracted_data schema
+                            proc_fields = {
+                                "type": pick(proc_raw, ["type", "DOC_TYPE", "document_type"]),
+                                "cnpj": pick(proc_raw, ["cnpj", "CNPJ"]),
+                                "cnpj2": pick(proc_raw, ["cnpj2", "CNPJ2"]),
+                                "vin": pick(proc_raw, ["vin", "VIN"]),
+                                "claim_no": pick(proc_raw, ["claim_no", "CLAIM_NO"]),
+                                "parts_value": pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount"]),
+                                "service_value": pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount"]),
+                            }
+
+                            # Compare with DMS metadata (from pre-processing)
+                            issues = []
+                            # Only compare keys that exist in DMS
+                            if dms.get("claim_no") is not None:
+                                if proc_fields.get("claim_no") is None or str(proc_fields["claim_no"]).strip() != str(dms.get("claim_no")).strip():
+                                    issues.append("claim_no")
+                            if dms.get("vin") is not None:
+                                if proc_fields.get("vin") is None or str(proc_fields["vin"]).strip() != str(dms.get("vin")).strip():
+                                    issues.append("vin")
+                            if dms.get("cnpj1") is not None:
+                                if proc_fields.get("cnpj") is None or str(proc_fields["cnpj"]).strip() != str(dms.get("cnpj1")).strip():
+                                    issues.append("cnpj")
+
+                            if issues:
+                                # Unmatched: record details and null-out problematic fields in extracted_data
+                                entry["status"] = "Unmatched"
+                                entry["unmatch_detail"] = issues
+                                final_fields = dict(proc_fields)
+                                for k in issues:
+                                    # issues use extracted_data key names (claim_no, vin, cnpj)
+                                    final_fields[k] = None
+                                entry["extracted_data"] = final_fields
+                            else:
+                                # Matched: extracted_data is the processing result
+                                entry["status"] = "Matched"
+                                entry["extracted_data"] = proc_fields
+                            break
+            except Exception:
+                # Non-fatal; continue
+                pass
         
         agg_stats = {
             "total_files": len(file_group),
@@ -629,6 +689,25 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             
             # Process results and check for success/failure
             for file_path, result in processing_results:
+                # Cache model output into passthrough for post-processing comparisons
+                try:
+                    model_output = result.get("file_model_output", result)
+                except AttributeError:
+                    model_output = result
+                try:
+                    files_list = passthrough.setdefault("files", [])
+                    matched_entry = None
+                    for entry in files_list:
+                        if entry.get("file_path") == file_path:
+                            matched_entry = entry
+                            break
+                    if matched_entry is None:
+                        matched_entry = {"file_path": file_path, "status": "Pending", "extracted_data": {}}
+                        files_list.append(matched_entry)
+                    matched_entry["processing_output"] = model_output
+                except Exception:
+                    # Non-fatal; continue normal flow
+                    pass
                 if "error" in result:
                     subchain_results[file_path]["processing"] = result
                     subchain_results[file_path]["error"] = result["error"]
