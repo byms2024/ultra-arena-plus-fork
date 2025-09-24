@@ -5,7 +5,10 @@ Advanced Chain processing strategy: execute chains of subchains with pre-process
 from typing import Dict, List, Tuple, Optional, Any
 import logging
 import time
+from pathlib import Path
+import re
 
+from ..common.text_extractor import TextExtractor
 from .base_strategy import BaseProcessingStrategy
 from .strategy_factory import ProcessingStrategyFactory
 from .strategy_factory import PreProcessingStrategyFactory
@@ -85,7 +88,60 @@ class LinkStrategy(BaseProcessingStrategy):
 # Pre-processing strategies
 class TextPreProcessingStrategy(LinkStrategy):
     """Pre-processing strategy for text-based operations."""
-    
+
+    def extraction_evaluation_regex(self, text_content):
+
+        if not text_content:
+            logging.warning(f"⚠️ Cannot evaluate empty text from extractor")
+            return 0
+
+        successful_matches = 0
+        match_details = []
+        
+        for field_name, regex_pattern in self.regex_criteria.items():
+            try:
+                matches = re.findall(regex_pattern, text_content)
+                if matches:
+                    successful_matches += 1
+                    match_details.append(f"{field_name}: {len(matches)} match(es)")
+
+            except Exception as e:
+                logging.error(f"❌ Regex evaluation failed for {field_name}: {e}")
+        
+        return successful_matches
+
+
+    def extract_text(self, pdf_path):
+        """Try to extract text with two different approach."""
+
+        logging.info(f"🔄 Extracting text from PDF: {Path(pdf_path).name}")
+
+        # Set extractors
+        self.primary_extractor = TextExtractor('pymupdf')
+        self.secundary_extractor = TextExtractor('pytesseract')
+
+        # Extract with Primary Extractor
+        primary_text = self.primary_extractor.extract_text(pdf_path, max_length=50000)
+        primary_score = self.extraction_evaluation_regex(primary_text)
+        chosen_text = primary_text
+
+        # Decides whether should try the second option
+        should_try_secondary = (
+            ((not primary_text) or (len(primary_text) < 1000)) and 
+            self.primary_extractor.extractor_lib != self.secundary_extractor.extractor_lib
+        )
+
+        # Tries second option and decides which text to use 
+        if should_try_secondary:
+            secondary_text = self.secundary_extractor.extract_text(pdf_path, max_length=50000)
+            secondary_score = self.extraction_evaluation_regex(secondary_text)
+
+            # Only selects the second if 2_score > 1_score or only the second has actually extracted text. 
+            if (secondary_score, bool(secondary_text)) > (primary_score, bool(primary_text)):
+                chosen_text = secondary_text
+        
+        return chosen_text
+
     def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str = "") -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Apply text pre-processing to files."""
@@ -93,8 +149,9 @@ class TextPreProcessingStrategy(LinkStrategy):
         results = []
         
         for file_path in file_group:
-            # Placeholder: Implement text preprocessing logic here
-            # For now, just pass through the file unchanged
+
+            text_content = self.extract_text(file_path)
+
             result = {"preprocessed": True, "preprocessing_type": "text"}
             results.append((file_path, result))
         
