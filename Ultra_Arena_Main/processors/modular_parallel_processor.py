@@ -15,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio
 
 from llm_strategies.strategy_factory import ProcessingStrategyFactory
-from llm_strategies.databaseOps import DatabaseOps
 from llm_strategies.data_sensitization import soft_resensitize_output, resensitize_output
 from processors.benchmark_tracker import BenchmarkTracker
 from common.base_monitor import BasePerformanceMonitor
@@ -63,19 +62,8 @@ class ModularParallelProcessor:
         # Initialize BenchmarkTracker instead of duplicating logic
         self.benchmark_tracker = BenchmarkTracker(benchmark_comparator, csv_output_file)
 
-        # Initialize database operations if database config is available
-        self.database_ops = None
-        if 'databases' in config:
-            try:
-                self.database_ops = DatabaseOps(config)
-                logging.info("✅ Database operations initialized for DMS validation")
-            except Exception as e:
-                logging.warning(f"⚠️ Failed to initialize database operations: {e}")
-        else:
-            print("====No database config found====")
-
         # Initialize processing strategy
-        self.strategy = ProcessingStrategyFactory.create_strategy(strategy_type, config, streaming=streaming, database_ops=self.database_ops)
+        self.strategy = ProcessingStrategyFactory.create_strategy(strategy_type, config, streaming=streaming)
         # Initialize components
         self.monitor = BasePerformanceMonitor("modular_parallel_processor")
         
@@ -888,7 +876,7 @@ class ModularParallelProcessor:
             
             # Check if all mandatory keys are present
             model_output = result.get('file_model_output', result)  # Handle both structures
-            has_all_keys, missing_keys = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator, self.database_ops)
+            has_all_keys, missing_keys = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator)
             
             if not has_all_keys:
                 self.files_needed_retry.add(file_path)
@@ -995,7 +983,7 @@ class ModularParallelProcessor:
                         
                         # Check if retry was successful
                         model_output = result.get('file_model_output', result)  # Handle both structures
-                        is_valid, missing_keys = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator, self.database_ops)
+                        is_valid, missing_keys = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator)
                         
                         if is_valid:
                             # Retry successful, add to file_stats
@@ -1186,7 +1174,7 @@ class ModularParallelProcessor:
                     failed_files = 0
                     for file_path, result in group_results:
                         model_output = result.get('model_output', result)  # Handle both structures
-                        is_valid, _ = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator, self.database_ops)
+                        is_valid, _ = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator)
                         if is_valid:
                             successful_files += 1
                         else:
@@ -1287,7 +1275,7 @@ class ModularParallelProcessor:
                     
                     # Check if retry was successful
                     model_output = result.get('model_output', result)  # Handle both structures
-                    is_valid, missing_keys = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator, self.database_ops)
+                    is_valid, missing_keys = self.strategy.check_mandatory_keys(model_output, file_path, self.benchmark_comparator)
                     
                     if is_valid:
                         # Retry successful, add to file_stats
@@ -1596,7 +1584,7 @@ class ModularParallelProcessor:
                             self.monitor.log_progress(f"❌ {os.path.basename(file_path)} failed after {max_retries} retries", "ERROR")
                 else:
                     # Check if all mandatory keys are present
-                    has_all_keys, missing_keys = self.strategy.check_mandatory_keys(result, file_path, self.benchmark_comparator, self.database_ops)
+                    has_all_keys, missing_keys = self.strategy.check_mandatory_keys(result, file_path, self.benchmark_comparator)
                     
                     if has_all_keys:
                         # Retry successful, create enhanced result structure with new organization
@@ -1759,7 +1747,7 @@ class ModularParallelProcessor:
                 if "error" in result:
                     failed_files += 1
                 else:
-                    has_all_keys, _ = self.strategy.check_mandatory_keys(result, file_path, self.benchmark_comparator, self.database_ops)
+                    has_all_keys, _ = self.strategy.check_mandatory_keys(result, file_path, self.benchmark_comparator)
                     if has_all_keys:
                         successful_files += 1
                     else:

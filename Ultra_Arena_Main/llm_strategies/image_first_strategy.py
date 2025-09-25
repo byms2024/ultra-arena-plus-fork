@@ -17,7 +17,7 @@ from processors.file_mapping_utils import create_image_first_file_path_mapper, F
 class ImageFirstProcessingStrategy(BaseProcessingStrategy):
     """Strategy for processing files by converting them to images first, then sending to LLM."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
         super().__init__(config)
         
         # Store streaming parameter

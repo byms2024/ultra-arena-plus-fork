@@ -22,7 +22,7 @@ from llm_client.client_utils import _create_text_first_prompt
 class EnhancedTextFirstProcessingStrategy(BaseProcessingStrategy):
     """Enhanced strategy for processing files with primary/secondary PDF extraction and regex validation."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
         super().__init__(config)
         self.streaming = streaming
         self.llm_provider = config.get("llm_provider", "ollama")

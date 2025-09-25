@@ -4,23 +4,642 @@ Regex processing strategy - placeholder for regex-based document processing.
 
 import logging
 import time
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Iterable, Dict, List, Any, Optional, Tuple
+import io
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from unittest import result
+from oracledb import dataframe
+import pandas as pd
 
+
+
+# Optional OCR / PDF tooling
+try:
+    from PIL import Image  # type: ignore
+    import pytesseract  # type: ignore
+    from pdf2image import convert_from_path  # type: ignore
+    _ocr_modules_available = True
+except Exception:
+    _ocr_modules_available = False
+
+try:
+    import fitz  # type: ignore  # PyMuPDF
+    _pymupdf_available = True
+except Exception:
+    _pymupdf_available = False
+
+try:
+    import PyPDF2  # type: ignore
+except Exception:
+    PyPDF2 = None  # type: ignore[assignment]
+
+try:
+    from pdfminer.high_level import extract_text as pdfminer_extract_text  # type: ignore
+except Exception:
+    pdfminer_extract_text = None  # type: ignore[assignment]
+    
 from .base_strategy import BaseProcessingStrategy
 from llm_client.llm_client_factory import LLMClientFactory
 from llm_metrics import TokenCounter
 
+# =========================
+# Patterns and normalizers
+# =========================
+
+NFS_E_REGEXES: list[re.Pattern[str]] = [
+    re.compile(r"\bNF\s*[-]?\s*S\s*[-]?\s*E\b", re.IGNORECASE),
+    re.compile(r"\bNFS\s*[-\s]?e\b", re.IGNORECASE),
+    re.compile(r"\bNFSe\b", re.IGNORECASE),
+    re.compile(r"\bNota\s+Fiscal\s+de\s+Servi[cç]o[s]?\b", re.IGNORECASE),
+    re.compile(r"\bNota\s+Fiscal\s+de\s+Servi[cç]os?\s+Eletr[oô]nica\b", re.IGNORECASE),
+    re.compile(r"\bNF\s*[-\s]?Servi[cç]o[s]?\b", re.IGNORECASE),
+    re.compile(r"\bEletr[oô]nica\s+de\s+Servi[cç]o[s]?\b", re.IGNORECASE),
+    re.compile(r"\bEletr[oô]nica\s+de\s+Servi[cç]os?\b", re.IGNORECASE),
+    re.compile(r"\bTomador(a)?\s+de\s+Servi[cç]o[s]?\b", re.IGNORECASE),
+    re.compile(r"\bServi[cç]o[s]?\s+Tomado[s]?\b", re.IGNORECASE),
+]
+
+NFE_REGEXES: list[re.Pattern[str]] = [
+    re.compile(r"\bNF\s*[-]?\s*e\b", re.IGNORECASE),
+    re.compile(r"\bNFe\b", re.IGNORECASE),
+]
+
+CLAIM_NO_REGEX: re.Pattern[str] = re.compile(
+    r"(?P<prefix>BY)?DAMEBR(?P<body>[A-Z0-9]{8,30}_[0-9A-Z]{2})",
+    re.IGNORECASE,
+)
+
+VIN_REGEX: re.Pattern[str] = re.compile(
+    r"L[A-HJ-NPR-Z0-9][0X][A-HJ-NPR-Z0-9]{6,10}\d{7}",
+    re.IGNORECASE,
+)
+
+CNPJ_BANNED: set[str] = {
+    "17.140.820/0007-77",
+    "17140820000777",
+    "171408200007-77",
+    "17140820/000777",
+    "17140820/0007-77",
+}
+
+CNPJ_BANNED_DIGITS: set[str] = {re.sub(r"\D", "", v) for v in CNPJ_BANNED}
+
+CNPJ_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}/\d{6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{8}/\d{4}-\d{2}(?!\d)"),
+    re.compile(r"(?<!\d)\d{8}/\d{6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{14}(?!\d)"),
+]
+
+MONEY_REGEX: re.Pattern[str] = re.compile(
+    r"(?<!\d)(?:\d{1,3}(?:[.,]\d{3})+[.,]\d{2}|\d+[.,]\d{2})(?!\d)"
+)
+
+
+def _normalize_compact(value: str) -> str:
+    return re.sub(r"[\s._\-/]", "", (value or "")).upper()
+
+
+def _parse_amount_to_cents(amount) -> Optional[int]:
+    if isinstance(amount, float):
+        return int(round(amount * 100))
+    else:
+        s = (amount or "").strip()
+        # Find the last decimal separator (either ',' or '.')
+        last_comma = s.rfind(',')
+        last_dot = s.rfind('.')
+        last_sep_pos = max(last_comma, last_dot)
+        if last_sep_pos == -1:
+            # No decimal separator, treat as integer amount in cents
+            digits = re.sub(r"[^0-9]", "", s)
+            if digits.isdigit():
+                return int(digits) * 100
+            return None
+        int_part = re.sub(r"[^0-9]", "", s[:last_sep_pos])
+        dec_part = re.sub(r"[^0-9]", "", s[last_sep_pos + 1:])
+        # Only take up to 2 decimal digits
+        dec_part = (dec_part + "00")[:2]
+        if not int_part.isdigit() or not dec_part.isdigit():
+            return None
+        try:
+            return int(int_part) * 100 + int(dec_part)
+        except Exception:
+            return None
+
+
+def _extract_money_candidates_cents(text: str) -> list[int]:
+    candidates: set[int] = set()
+    for m in MONEY_REGEX.findall(text or ""):
+        cents = _parse_amount_to_cents(m)
+        if cents is not None:
+            candidates.add(cents)
+    return sorted(candidates, reverse=True)
+
+
+def _build_amount_regex_from_cents(expected_cents: int) -> re.Pattern[str]:
+    digits = f"{expected_cents:02d}"
+    if len(digits) < 3:
+        digits = digits.rjust(3, "0")
+    int_digits = digits[:-2]
+    cent_digits = digits[-2:]
+    parts: list[str] = ["(?<!\\d)"]
+    for d in int_digits:
+        parts.append(re.escape(d))
+        parts.append(r"\D*")
+    parts.append(r"[\D]?\D*")
+    parts.append(re.escape(cent_digits[0]))
+    parts.append(r"\D*")
+    parts.append(re.escape(cent_digits[1]))
+    parts.append(r"(?!\d)")
+    return re.compile("".join(parts))
+
+
+def _find_expected_value_in_text(text: str, expected_cents: int) -> bool:
+    pattern = _build_amount_regex_from_cents(expected_cents)
+    if pattern.search(text):
+        return True
+    condensed = re.sub(r"\s+", " ", text or "")
+    return pattern.search(condensed) is not None
+
+
+def _contains_with_0O_ambiguity(haystack: str, needle: str) -> bool:
+    if not needle:
+        return False
+    if needle in (haystack or ""):
+        return True
+
+    def build_pattern(s: str) -> str:
+        parts: list[str] = []
+        for ch in s:
+            if ch in {"0", "O"}:
+                parts.append("[0O]")
+            elif ch == "8":
+                parts.append("[08]")
+            else:
+                parts.append(re.escape(ch))
+        return "".join(parts)
+
+    pattern = build_pattern(needle)
+    try:
+        if re.search(pattern, haystack or ""):
+            return True
+        normalized_hay = (haystack or "").replace("O", "0")
+        if re.search(pattern, normalized_hay):
+            return True
+    except Exception:
+        return False
+    return False
+
+
+# =========================
+# Text extraction utilities
+# =========================
+
+def _find_poppler_bin() -> Optional[str]:
+    env_path = os.environ.get("POPPLER_PATH")
+    if env_path and os.path.isdir(env_path):
+        if os.path.exists(os.path.join(env_path, "pdftoppm.exe")) or os.path.exists(os.path.join(env_path, "pdftocairo.exe")):
+            return env_path
+    user_home = os.path.expanduser("~")
+    dl_root = os.path.join(user_home, "Downloads", "poppler-25.09.0")
+    if os.path.isdir(dl_root):
+        for root, _, _ in os.walk(dl_root):
+            if os.path.basename(root).lower() == "bin":
+                if os.path.exists(os.path.join(root, "pdftoppm.exe")) or os.path.exists(os.path.join(root, "pdftocairo.exe")):
+                    return root
+    candidates = [
+        r"C:\\Program Files\\poppler\\bin",
+        r"C:\\Program Files (x86)\\poppler\\bin",
+        os.path.join(user_home, "Desktop", "poppler-windows", "bin"),
+        os.path.join(user_home, "Desktop", "poppler-windows-master", "bin"),
+        os.path.join(user_home, "Desktop", "poppler-windows-master", "Library", "bin"),
+    ]
+    for candidate in candidates:
+        if os.path.isdir(candidate):
+            if os.path.exists(os.path.join(candidate, "pdftoppm.exe")) or os.path.exists(os.path.join(candidate, "pdftocairo.exe")):
+                return candidate
+    return None
+
+
+def _find_tesseract_cmd() -> Optional[str]:
+    env_cmd = os.environ.get("TESSERACT_CMD")
+    if env_cmd and os.path.exists(env_cmd):
+        return env_cmd
+    import shutil
+    which_cmd = shutil.which("tesseract")
+    if which_cmd:
+        return which_cmd
+    candidates = [
+        r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+        r"C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
+        r"C:\\ProgramData\\chocolatey\\bin\\tesseract.exe",
+        r"C:\\Users\\alexandre.carrer\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe",
+        "/mnt/c/Program Files/Tesseract-OCR/tesseract.exe",
+        "/mnt/c/Program Files (x86)/Tesseract-OCR/tesseract.exe",
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+_ocr_available = False
+if _ocr_modules_available:
+    try:
+        _tesseract_cmd = _find_tesseract_cmd()
+        if _tesseract_cmd:
+            pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd  # type: ignore[attr-defined]
+            _ocr_available = True
+    except Exception:
+        _ocr_available = False
+
+# PDFTEXTEXTRACTOR
+
+class PdfTextExtractor:
+    @staticmethod
+    def extract_text_from_txt(file_path: Path) -> str:
+        try:
+            try:
+                return file_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                return file_path.read_text(encoding="latin-1", errors="ignore")
+        except Exception:
+            return ""
+
+    @staticmethod
+    def extract_text_from_pdf(file_path: Path) -> str:
+        extracted_text = ""
+        if pdfminer_extract_text is not None:
+            try:
+                extracted_text = pdfminer_extract_text(str(file_path)) or ""
+            except Exception:
+                extracted_text = ""
+        elif PyPDF2 is not None:
+            try:
+                fragments: list[str] = []
+                with open(file_path, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)  # type: ignore[attr-defined]
+                    for page in getattr(reader, "pages", []):
+                        try:
+                            extracted = page.extract_text() or ""
+                        except Exception:
+                            extracted = ""
+                        if extracted:
+                            fragments.append(extracted)
+                extracted_text = "\n".join(fragments)
+            except Exception:
+                extracted_text = ""
+
+        if len(extracted_text) < 10000 and _ocr_available:
+            images = []
+            poppler_bin = _find_poppler_bin()
+            if poppler_bin is not None:
+                try:
+                    images = convert_from_path(str(file_path), poppler_path=poppler_bin, dpi=300)
+                except Exception:
+                    images = []
+            if not images and _pymupdf_available:
+                try:
+                    doc = fitz.open(str(file_path))
+                    zoom = 300.0 / 72.0
+                    matrix = fitz.Matrix(zoom, zoom)
+                    for page in doc:
+                        pix = page.get_pixmap(matrix=matrix)
+                        images.append(Image.open(io.BytesIO(pix.tobytes("png"))))
+                except Exception:
+                    images = []
+            try:
+                ocr_texts = []
+                for img in images:
+                    try:
+                        ocr_text = pytesseract.image_to_string(img, lang="por")
+                    except Exception:
+                        ocr_text = pytesseract.image_to_string(img)
+                    ocr_texts.append(ocr_text)
+                ocr_result = "\n".join(ocr_texts)
+                if len(ocr_result) > len(extracted_text):
+                    extracted_text = ocr_result
+            except Exception:
+                pass
+        return extracted_text
+
+    @staticmethod
+    def extract_text_best_effort(file_path: Path) -> str:
+        suffix = file_path.suffix.lower()
+        if suffix == ".txt":
+            return PdfTextExtractor.extract_text_from_txt(file_path)
+        if suffix == ".pdf":
+            return PdfTextExtractor.extract_text_from_pdf(file_path)
+        try:
+            return file_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return ""
+
+
+class PdfClassifier:
+    @staticmethod
+    def is_servico(text: str) -> bool:
+        for p in NFS_E_REGEXES:
+            if p.search(text or ""):
+                return True
+        return False
+
+    @staticmethod
+    def is_pecas(text: str) -> bool:
+        for p in NFE_REGEXES:
+            if p.search(text or ""):
+                return True
+        return False
+
+    @staticmethod
+    def classify_pdf(text: str) -> str:
+        if PdfClassifier.is_servico(text):
+            return "Serviço"
+        if PdfClassifier.is_pecas(text):
+            return "Peças"
+        return "Outros"
+
+
+class FieldExtractor:
+    @staticmethod
+    def extract_claim_no_blind(text: str) -> Optional[str]:
+        m = CLAIM_NO_REGEX.search(text or "")
+        if not m:
+            return None
+        body = m.group('body')
+        return f"BYDAMEBR{body}"
+
+    @staticmethod
+    def match_expected_claim_no(text: str, expected_claim: Optional[str]) -> Optional[str]:
+        if not expected_claim:
+            return None
+        text_compact = _normalize_compact(text or "")
+        claim_compact = _normalize_compact(expected_claim)
+        found = _contains_with_0O_ambiguity(text_compact, claim_compact)
+        if not found and claim_compact.startswith("BY"):
+            found = _contains_with_0O_ambiguity(text_compact, claim_compact[2:])
+        if found:
+            normalized = expected_claim
+            if not normalized.upper().startswith("BY"):
+                normalized = f"BY{normalized}"
+            return normalized
+        return None
+
+    @staticmethod
+    def extract_vin_blind(text: str) -> Optional[str]:
+        m = VIN_REGEX.search(text or "")
+        return m.group(0) if m else None
+
+    @staticmethod
+    def match_expected_vin(text: str, expected_vin: Optional[str]) -> Optional[str]:
+        if not expected_vin:
+            return None
+        text_compact = _normalize_compact(text or "")
+        vin_compact = _normalize_compact(expected_vin)
+        return expected_vin if _contains_with_0O_ambiguity(text_compact, vin_compact) else None
+
+    @staticmethod
+    def extract_cnpj_blind(text: str) -> Optional[str]:
+        for pattern in CNPJ_PATTERNS:
+            candidates = pattern.findall(text or "")
+            if not candidates:
+                continue
+            for c in candidates:
+                digits = re.sub(r"\D", "", c)
+                if digits in CNPJ_BANNED_DIGITS:
+                    continue
+                return c
+        return None
+
+    @staticmethod
+    def match_expected_cnpj(text: str, expected_cnpj: Optional[str]) -> Optional[str]:
+        if not expected_cnpj:
+            return None
+        text_digits = re.sub(r"\D", "", (text or "").replace('O', '0').replace('o', '0'))
+        cnpj_digits = re.sub(r"\D", "", expected_cnpj.replace('O', '0').replace('o', '0'))
+        if len(cnpj_digits) == 14 and cnpj_digits not in CNPJ_BANNED_DIGITS and cnpj_digits in text_digits:
+            return expected_cnpj
+        return None
+
+    @staticmethod
+    def extract_cnpj2_blind(text: str) -> str:
+        text_digits_only = re.sub(r"\D", "", text or "")
+        if "17140820000777" in text_digits_only or "171408201000777" in text_digits_only:
+            return "17.140.820/0007-77"
+        return ""
+
+    @staticmethod
+    def extract_price_candidates_cents(text: str) -> list[int]:
+        return _extract_money_candidates_cents(text or "")
+
+    @staticmethod
+    def match_expected_amount(text: str, expected_amount_str: Optional[str]) -> Optional[int]:
+        if not expected_amount_str:
+            return None
+        cents = _parse_amount_to_cents(expected_amount_str)
+        if cents is None:
+            return None
+        return cents if _find_expected_value_in_text(text or "", cents) else None
+
+
+# =========================
+# Public API helpers
+# =========================
+
+def _iter_pdf_files(root: Path) -> Iterable[Path]:
+    skip_dirs = {".git", "node_modules", "venv", ".venv", "__pycache__"}
+    if not root.exists() or not root.is_dir():
+        return []
+    for path in root.rglob("*.pdf"):
+        try:
+            if any(part in skip_dirs for part in path.parts):
+                continue
+            yield path
+        except Exception:
+            continue
+
+
+def _format_brl_from_cents(cents: Optional[int]) -> str:
+    if cents is None:
+        return ""
+    reais = cents // 100
+    c = cents % 100
+    return f"{reais:,}".replace(",", ".") + f",{c:02d}"
+
+
+@dataclass
+class Answers:
+    claim_no: Optional[str] = None
+    vin: Optional[str] = None
+    service_price: Optional[str] = None
+    parts_price: Optional[str] = None
+    cnpj: Optional[str] = None
+
+
+@dataclass
+class PreprocessedData:
+    files: list[Path]
+    file_texts: dict[Path, str]
+    file_classes: dict[Path, str]
+    answers: Answers
+
+def categorize_pdfs(root: str | Path) -> pd.DataFrame:
+    root_path = Path(root).expanduser().resolve()
+    rows: list[dict[str, Any]] = []
+    for file_path in _iter_pdf_files(root_path):
+        text = PdfTextExtractor.extract_text_best_effort(file_path)
+        doc_class = PdfClassifier.classify_pdf(text)
+        rows.append({"file": str(file_path), "class": doc_class})
+    return pd.DataFrame(rows, columns=["file", "class"]) if rows else pd.DataFrame(columns=["file", "class"])
+
+def _collect_from_files(
+    files: list[Path],
+    answers: Answers,
+    want_service_price: bool,
+    want_parts_price: bool,
+    ) -> tuple[dict[str, Any], dict[str, bool]]:
+        data: dict[str, Any] = {
+            "claim_no": None,
+            "vin": None,
+            "cnpj": None,
+            "service_price_cents": None,
+            "parts_price_cents": None,
+            "cnpj2": "",
+        }
+        used_answers: dict[str, bool] = {k: False for k in ["claim_no", "vin", "cnpj", "service_price_cents", "parts_price_cents"]}
+
+        for pdf in files:
+            text = PdfTextExtractor.extract_text_best_effort(pdf)
+
+            # Try answers-guided for missing fields
+            if data["claim_no"] is None:
+                m = FieldExtractor.match_expected_claim_no(text, answers.claim_no)
+                if m:
+                    data["claim_no"] = m
+                    used_answers["claim_no"] = True
+            if data["vin"] is None:
+                m = FieldExtractor.match_expected_vin(text, answers.vin)
+                if m:
+                    data["vin"] = m
+                    used_answers["vin"] = True
+            if data["cnpj"] is None:
+                m = FieldExtractor.match_expected_cnpj(text, answers.cnpj)
+                if m:
+                    data["cnpj"] = m
+                    used_answers["cnpj"] = True
+
+            if want_service_price and data["service_price_cents"] is None:
+                m = FieldExtractor.match_expected_amount(text, answers.service_price)
+                if m is not None:
+                    data["service_price_cents"] = m
+                    used_answers["service_price_cents"] = True
+
+            if want_parts_price and data["parts_price_cents"] is None:
+                m = FieldExtractor.match_expected_amount(text, answers.parts_price)
+                if m is not None:
+                    data["parts_price_cents"] = m
+                    used_answers["parts_price_cents"] = True
+
+            # Blind fallback for remaining fields
+            if data["claim_no"] is None:
+                b = FieldExtractor.extract_claim_no_blind(text)
+                if b:
+                    data["claim_no"] = b
+            if data["vin"] is None:
+                b = FieldExtractor.extract_vin_blind(text)
+                if b:
+                    data["vin"] = b
+            if data["cnpj"] is None:
+                b = FieldExtractor.extract_cnpj_blind(text)
+                if b:
+                    data["cnpj"] = b
+
+            if want_service_price and data["service_price_cents"] is None:
+                candidates = FieldExtractor.extract_price_candidates_cents(text)
+                if candidates:
+                    data["service_price_cents"] = candidates[0]
+
+            if want_parts_price and data["parts_price_cents"] is None:
+                candidates = FieldExtractor.extract_price_candidates_cents(text)
+                if candidates:
+                    data["parts_price_cents"] = candidates[0]
+
+            # CNPJ2 only makes sense for Serviço context; but harmless to collect here
+            if not data["cnpj2"]:
+                data["cnpj2"] = FieldExtractor.extract_cnpj2_blind(text)
+
+            # Early stop if everything requested is found
+            done = (
+                data["claim_no"] is not None and
+                data["vin"] is not None and
+                data["cnpj"] is not None and
+                (not want_service_price or data["service_price_cents"] is not None) and
+                (not want_parts_price or data["parts_price_cents"] is not None)
+            )
+            if done:
+                break
+
+        return data, used_answers
+
+def mock_build_answers_from_pdfs(file_paths: list[str]) -> Answers:
+    """
+    Mock: derive target values from the PDF set. Replace with metadata-driven logic later.
+    """
+    return Answers()  # all None; override via manual answers if provided
+
+
+class RegexPreProcessingStrategy:
+    def __init__(self, config: Dict[str, Any] | None = None):
+        self.config = config or {}
+
+    def preprocess_filepaths(self, file_paths: list[str], manual_answers: Optional[Answers] = None) -> PreprocessedData:
+        files: list[Path] = [Path(f).expanduser().resolve() for f in file_paths]
+
+        # Build targets via mock, then override with any manual answers provided
+        auto_answers = mock_build_answers_from_pdfs(file_paths)
+        if manual_answers is not None:
+            auto_answers = Answers(
+                claim_no=manual_answers.claim_no if manual_answers.claim_no is not None else auto_answers.claim_no,
+                vin=manual_answers.vin if manual_answers.vin is not None else auto_answers.vin,
+                service_price=manual_answers.service_price if manual_answers.service_price is not None else auto_answers.service_price,
+                parts_price=manual_answers.parts_price if manual_answers.parts_price is not None else auto_answers.parts_price,
+                cnpj=manual_answers.cnpj if manual_answers.cnpj is not None else auto_answers.cnpj,
+            )
+
+        file_texts: dict[Path, str] = {}
+        file_classes: dict[Path, str] = {}
+        for f in files:
+            t = PdfTextExtractor.extract_text_best_effort(f)
+            file_texts[f] = t
+            file_classes[f] = PdfClassifier.classify_pdf(t)
+
+        return PreprocessedData(
+            files=files,
+            file_texts=file_texts,
+            file_classes=file_classes,
+            answers=auto_answers,
+        )
+
+    def preprocess_file_groups(self, file_groups: list[list[str]]) -> list[PreprocessedData]:
+        bundles: list[PreprocessedData] = []
+        for group in file_groups:
+            bundles.append(self.preprocess_filepaths(group))
+        return bundles
+
 
 class RegexProcessingStrategy(BaseProcessingStrategy):
-    """Strategy for processing documents using regex patterns and rules."""
-
-    def __init__(self, config: Dict[str, Any], streaming: bool = False):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False, answers: Dict[str, Any] = None):
         super().__init__(config)
         self.streaming = streaming
         self.llm_provider = config.get("llm_provider", "google")
         self.provider_config = config.get("provider_configs", {}).get(self.llm_provider, {})
         self.regex_patterns = config.get("regex_patterns", {})
         self.fallback_llm = config.get("fallback_llm", True)
+        self.answers = answers
 
         # Initialize LLM client if fallback is enabled
         self.llm_client = None
@@ -32,7 +651,8 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
         """
         Process a group of files using regex-based extraction.
 
-        This is a placeholder implementation that will be replaced with actual regex processing logic.
+        This implementation uses pre-processing to extract text and targets,
+        followed by processing to build per-file results.
         """
         start_time = time.time()
         results = []
@@ -45,15 +665,46 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
             "processing_time": 0
         }
 
-        for file_path in file_group:
-            try:
-                # Placeholder: Process single file with regex
-                file_result = self._process_single_file_with_regex(file_path)
-                results.append((file_path, file_result))
-                agg_stats["successful_files"] += 1
+        try:
+            # Prepare manual overrides from self.answers if present
+            manual_answers = None
+            if self.answers is not None:
+                manual_answers = Answers(
+                    claim_no=getattr(self.answers, "claim_no", None),
+                    vin=getattr(self.answers, "vin", None),
+                    service_price=getattr(self.answers, "service_price", None),
+                    parts_price=getattr(self.answers, "parts_price", None),
+                    cnpj=getattr(self.answers, "cnpj", None),
+                )
 
-            except Exception as e:
-                logging.error(f"❌ Error processing file {file_path}: {e}")
+            # Preprocess
+            preprocessor = RegexPreProcessingStrategy(self.config)
+            pre = preprocessor.preprocess_filepaths(file_group, manual_answers=manual_answers)
+
+            # Process
+            df = self.process_preprocessed_filepaths(pre)
+
+            # For each file, collect the corresponding row as a dict
+            for idx, file_path in enumerate(file_group):
+                try:
+                    row = df[df["file"] == str(Path(file_path).expanduser().resolve())]
+                    if not row.empty:
+                        file_result = row.iloc[0].to_dict()
+                        results.append((file_path, file_result))
+                        agg_stats["successful_files"] += 1
+                    else:
+                        error_result = {"error": "No data extracted", "file_path": file_path}
+                        results.append((file_path, error_result))
+                        agg_stats["failed_files"] += 1
+                except Exception as e:
+                    logging.error(f"❌ Error extracting row for file {file_path}: {e}")
+                    error_result = {"error": str(e), "file_path": file_path}
+                    results.append((file_path, error_result))
+                    agg_stats["failed_files"] += 1
+
+        except Exception as e:
+            logging.error(f"❌ Error processing file group: {e}")
+            for file_path in file_group:
                 error_result = {"error": str(e), "file_path": file_path}
                 results.append((file_path, error_result))
                 agg_stats["failed_files"] += 1
@@ -70,21 +721,200 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
         Replace with actual regex processing logic.
         """
         # Placeholder implementation - return mock extracted data
-        mock_result = {
-            "DOC_TYPE": "NF",  # Mock document type
-            "CLAIM_NUMBER": "123456789",  # Mock claim number
-            "VIN": "1HGCM82633A123456",  # Mock VIN
-            "VALOR_TOTAL": "1500.00",  # Mock total value
-            "CNPJ_1": "12.345.678/0001-90",  # Mock CNPJ
-            "extraction_method": "regex",
-            "confidence_score": 0.85,
-            "processing_time": 0.1
-        }
+        
+        result_dataframe = process_filepaths([file_path], self.answers.claim_no, self.answers.vin, self.answers.service_price, self.answers.parts_price, self.answers.cnpj)
 
-        # Log processing (placeholder)
+        
+
         logging.info(f"📄 Regex processed file: {file_path}")
 
-        return mock_result
+        return result
+
+    def process_preprocessed_filepaths(self, pre: PreprocessedData) -> pd.DataFrame:
+        files = pre.files
+        file_texts = pre.file_texts
+        file_classes = pre.file_classes
+        answers = pre.answers
+
+        rows: list[dict[str, Any]] = []
+        found_service_price_any = False
+        found_parts_price_any = False
+        temp_rows: dict[Path, dict[str, Any]] = {}
+
+        for f in files:
+            cls = file_classes.get(f, "Outros")
+            text = file_texts.get(f, "")
+
+            row: dict[str, Any] = {
+                "file": str(f),
+                "class": cls,
+                "collected_service_price": "",
+                "collected_parts_price": "",
+                "collected_CNPJ": "",
+                "collected_CNPJ2": "",
+                "collected_VIN": "",
+                "collected_ClaimNO": "",
+                "search_mode": "blind",
+            }
+
+            used_answers_any = False
+
+            if cls == "Serviço":
+                m = FieldExtractor.match_expected_claim_no(text, answers.claim_no)
+                if m:
+                    row["collected_ClaimNO"] = m
+                    used_answers_any = True
+                if not row["collected_ClaimNO"]:
+                    b = FieldExtractor.extract_claim_no_blind(text)
+                    if b:
+                        row["collected_ClaimNO"] = b
+
+                m = FieldExtractor.match_expected_vin(text, answers.vin)
+                if m:
+                    row["collected_VIN"] = m
+                    used_answers_any = True
+                if not row["collected_VIN"]:
+                    b = FieldExtractor.extract_vin_blind(text)
+                    if b:
+                        row["collected_VIN"] = b
+
+                m = FieldExtractor.match_expected_cnpj(text, answers.cnpj)
+                if m:
+                    row["collected_CNPJ"] = m
+                    used_answers_any = True
+                if not row["collected_CNPJ"]:
+                    b = FieldExtractor.extract_cnpj_blind(text)
+                    if b:
+                        row["collected_CNPJ"] = b
+
+                m_amt = FieldExtractor.match_expected_amount(text, answers.service_price)
+                if m_amt is not None:
+                    row["collected_service_price"] = _format_brl_from_cents(m_amt)
+                    used_answers_any = True
+                if not row["collected_service_price"]:
+                    cands = FieldExtractor.extract_price_candidates_cents(text)
+                    if cands and answers.service_price:
+                        clean_target = answers.service_price.replace(".", "").replace(",", "")
+                        for candidate in cands:
+                            str_candidate = str(candidate)
+                            formatted = _format_brl_from_cents(candidate)
+                            if clean_target and str_candidate in clean_target:
+                                row["collected_service_price"] = formatted
+                                break
+
+                row["collected_CNPJ2"] = FieldExtractor.extract_cnpj2_blind(text)
+
+                if row["collected_service_price"]:
+                    found_service_price_any = True
+
+            elif cls == "Peças":
+                m = FieldExtractor.match_expected_claim_no(text, answers.claim_no)
+                if m:
+                    row["collected_ClaimNO"] = m
+                    used_answers_any = True
+                if not row["collected_ClaimNO"]:
+                    b = FieldExtractor.extract_claim_no_blind(text)
+                    if b:
+                        row["collected_ClaimNO"] = b
+
+                m = FieldExtractor.match_expected_vin(text, answers.vin)
+                if m:
+                    row["collected_VIN"] = m
+                    used_answers_any = True
+                if not row["collected_VIN"]:
+                    b = FieldExtractor.extract_vin_blind(text)
+                    if b:
+                        row["collected_VIN"] = b
+
+                m = FieldExtractor.match_expected_cnpj(text, answers.cnpj)
+                if m:
+                    row["collected_CNPJ"] = m
+                    used_answers_any = True
+                if not row["collected_CNPJ"]:
+                    b = FieldExtractor.extract_cnpj_blind(text)
+                    if b:
+                        row["collected_CNPJ"] = b
+
+                m_amt = FieldExtractor.match_expected_amount(text, answers.parts_price)
+                if m_amt is not None:
+                    row["collected_parts_price"] = _format_brl_from_cents(m_amt)
+                    used_answers_any = True
+                if not row["collected_parts_price"]:
+                    cands = FieldExtractor.extract_price_candidates_cents(text)
+                    if cands and answers.parts_price:
+                        clean_target = answers.parts_price.replace(".", "").replace(",", "")
+                        for candidate in cands:
+                            str_candidate = str(candidate)
+                            formatted = _format_brl_from_cents(candidate)
+                            if clean_target and str_candidate in clean_target:
+                                row["collected_parts_price"] = formatted
+                                break
+
+                if row["collected_parts_price"]:
+                    found_parts_price_any = True
+
+            row["search_mode"] = "answers" if used_answers_any else "blind"
+            temp_rows[f] = row
+
+        for f in files:
+            if file_classes.get(f, "Outros") != "Outros":
+                continue
+            text = file_texts.get(f, "")
+            row = temp_rows.get(f)
+            if row is None:
+                row = {
+                    "file": str(f),
+                    "class": "Outros",
+                    "collected_service_price": "",
+                    "collected_parts_price": "",
+                    "collected_CNPJ": "",
+                    "collected_CNPJ2": "",
+                    "collected_VIN": "",
+                    "collected_ClaimNO": "",
+                    "search_mode": "blind",
+                }
+
+            used_answers_any = False
+
+            if not found_service_price_any:
+                m_amt = FieldExtractor.match_expected_amount(text, answers.service_price)
+                if m_amt is not None:
+                    row["collected_service_price"] = _format_brl_from_cents(m_amt)
+                    used_answers_any = True
+                if not row["collected_service_price"]:
+                    cands = FieldExtractor.extract_price_candidates_cents(text)
+                    if cands:
+                        row["collected_service_price"] = "0,0"
+
+            if not found_parts_price_any:
+                m_amt = FieldExtractor.match_expected_amount(text, answers.parts_price)
+                if m_amt is not None:
+                    row["collected_parts_price"] = _format_brl_from_cents(m_amt)
+                    used_answers_any = True
+                if not row["collected_parts_price"]:
+                    cands = FieldExtractor.extract_price_candidates_cents(text)
+                    if cands:
+                        row["collected_parts_price"] = "0,0"
+
+            if used_answers_any:
+                row["search_mode"] = "answers"
+
+            temp_rows[f] = row
+
+        rows.extend(temp_rows[f] for f in files)
+
+        columns = [
+            "file",
+            "class",
+            "collected_service_price",
+            "collected_parts_price",
+            "collected_CNPJ",
+            "collected_CNPJ2",
+            "collected_VIN",
+            "collected_ClaimNO",
+            "search_mode",
+        ]
+        return pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(columns=columns)
 
     def _fallback_to_llm(self, file_path: str, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -98,3 +928,153 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
         # Placeholder: LLM fallback logic would go here
         logging.info(f"🤖 Fallback to LLM for file: {file_path}")
         return extracted_data
+
+
+def process_filepaths(
+    file_paths: list[str],
+    claim_no_answer: Optional[str] = None,
+    vin_answer: Optional[str] = None,
+    service_price_answer: Optional[str] = None,
+    parts_price_answer: Optional[str] = None,
+    cnpj_answer: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return one row per file with collected fields via pre-processing + processing."""
+    manual_answers = Answers(
+        claim_no=claim_no_answer,
+        vin=vin_answer,
+        service_price=service_price_answer,
+        parts_price=parts_price_answer,
+        cnpj=cnpj_answer,
+    )
+
+    preprocessor = RegexPreProcessingStrategy({})
+    pre = preprocessor.preprocess_filepaths(file_paths, manual_answers=manual_answers)
+
+    processor = RegexProcessingStrategy(config={}, streaming=False, answers=manual_answers)
+    return processor.process_preprocessed_filepaths(pre)
+
+
+def process_repository(
+    root: str | Path,
+    claim_no_answer: Optional[str] = None,
+    vin_answer: Optional[str] = None,
+    service_price_answer: Optional[str] = None,
+    parts_price_answer: Optional[str] = None,
+    cnpj_answer: Optional[str] = None,
+) -> pd.DataFrame:
+    answers = Answers(
+        claim_no=claim_no_answer,
+        vin=vin_answer,
+        service_price=service_price_answer,
+        parts_price=parts_price_answer,
+        cnpj=cnpj_answer,
+    )
+
+    # Collect from Serviços and Peças first
+    servico_data = collect_data_from_servicos(root, answers)
+    pecas_data = collect_data_from_pecas(root, answers)
+
+    # Merge results preferring explicit values; prices come from specific classes
+    claim_no = servico_data.get("claim_no") or pecas_data.get("claim_no") or ""
+    vin = servico_data.get("vin") or pecas_data.get("vin") or ""
+    cnpj = servico_data.get("cnpj") or pecas_data.get("cnpj") or ""
+    service_price = servico_data.get("service_price") or ""
+    parts_price = pecas_data.get("parts_price") or ""
+
+    # Fallback via Outros if prices are missing
+    outros_data = collect_data_from_outros(root, answers, existing_service_price=service_price, existing_parts_price=parts_price)
+    service_price = service_price or outros_data.get("service_price") or ""
+    parts_price = parts_price or outros_data.get("parts_price") or ""
+
+    # Overall search mode: if any used answers, mark as answers else blind
+    mode_candidates = [servico_data.get("search_mode"), pecas_data.get("search_mode"), outros_data.get("search_mode")]
+    search_mode = "answers" if any(m == "answers" for m in mode_candidates) else "blind"
+
+    df = pd.DataFrame([
+        {
+            "collected_service_price": service_price,
+            "collected_parts_price": parts_price,
+            "collected_CNPJ": cnpj or "",
+            "collected_VIN": vin or "",
+            "collected_ClaimNO": claim_no or "",
+            "collected_CNPJ2": servico_data.get("cnpj2", ""),
+            "search_mode": search_mode,
+        }
+    ])
+    return df
+
+
+def collect_data_from_pecas(root: str | Path, answers: Answers) -> dict[str, Any]:
+    root_path = Path(root).expanduser().resolve()
+    pecas_df = categorize_pdfs(root_path)
+    pecas_mask = pecas_df["class"] == "Peças"
+    pecas_files = [Path(r["file"]) for _, r in pecas_df[pecas_mask].iterrows()]
+    data, used = _collect_from_files(pecas_files, answers, want_service_price=False, want_parts_price=True)
+    search_mode = "answers" if any(used.values()) else "blind"
+    return {
+        "claim_no": data["claim_no"],
+        "vin": data["vin"],
+        "cnpj": data["cnpj"],
+        "parts_price": _format_brl_from_cents(data["parts_price_cents"]),
+        "search_mode": search_mode,
+    }
+
+
+def collect_data_from_servicos(root: str | Path, answers: Answers) -> dict[str, Any]:
+    root_path = Path(root).expanduser().resolve()
+    # Avoid using column names with non-identifier characters in .query()
+    servicos_df = categorize_pdfs(root_path)
+    servicos_mask = servicos_df["class"] == "Serviço"
+    servico_files = [Path(r["file"]) for _, r in servicos_df[servicos_mask].iterrows()]
+    data, used = _collect_from_files(servico_files, answers, want_service_price=True, want_parts_price=False)
+    search_mode = "answers" if any(used.values()) else "blind"
+    return {
+        "claim_no": data["claim_no"],
+        "vin": data["vin"],
+        "cnpj": data["cnpj"],
+        "service_price": _format_brl_from_cents(data["service_price_cents"]),
+        "cnpj2": data["cnpj2"],
+        "search_mode": search_mode,
+    }
+
+
+def collect_data_from_outros(
+    root: str | Path,
+    answers: Answers,
+    existing_service_price: Optional[str],
+    existing_parts_price: Optional[str],
+) -> dict[str, Any]:
+    root_path = Path(root).expanduser().resolve()
+    outros_df = categorize_pdfs(root_path)
+    outros_files = [Path(r["file"]) for _, r in outros_df[outros_df["class"] == "Outros"].iterrows()]
+
+    # We only search for missing prices here, as a fallback
+    want_service = not existing_service_price
+    want_parts = not existing_parts_price
+    if not want_service and not want_parts:
+        return {"service_price": existing_service_price or "", "parts_price": existing_parts_price or "", "search_mode": ""}
+
+    data, used = _collect_from_files(outros_files, answers, want_service_price=want_service, want_parts_price=want_parts)
+    search_mode = "answers" if any(used.values()) else "blind"
+    return {
+        "service_price": existing_service_price or _format_brl_from_cents(data["service_price_cents"]) or "",
+        "parts_price": existing_parts_price or _format_brl_from_cents(data["parts_price_cents"]) or "",
+        "search_mode": search_mode,
+    }
+
+
+__all__ = [
+    "categorize_pdfs",
+    "collect_data_from_pecas",
+    "collect_data_from_servicos",
+    "collect_data_from_outros",
+    "process_repository",
+    "process_filepaths",
+    "Answers",
+    "PreprocessedData",
+    "RegexPreProcessingStrategy",
+    "RegexProcessingStrategy",
+    "mock_build_answers_from_pdfs",
+]
+
+

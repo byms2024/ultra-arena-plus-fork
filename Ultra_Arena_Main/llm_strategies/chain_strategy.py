@@ -7,80 +7,18 @@ import logging
 import time
 
 from .base_strategy import BaseProcessingStrategy
-from .strategy_factory import ProcessingStrategyFactory
-from .strategy_factory import PreProcessingStrategyFactory
-from .strategy_factory import PostProcessingStrategyFactory
-
-
-class PreProcessingStrategyFactory:
-    """Factory for creating pre-processing strategies."""
-    
-    @staticmethod
-    def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
-        """Create a pre-processing strategy based on type."""
-        if strategy_type == "text":
-            # Text pre-processing strategy - placeholder for text extraction/cleaning
-            return TextPreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "image":
-            # Image pre-processing strategy - placeholder for image preprocessing
-            return ImagePreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "file":
-            # File pre-processing strategy - placeholder for file preprocessing
-            return FilePreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "none":
-            # No pre-processing
-            return NoOpPreProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        else:
-            raise ValueError(f"Unsupported pre-processing strategy type: {strategy_type}")
-
-
-class ProcessingStrategyFactory:
-    """Factory for creating processing strategies."""
-    
-    @staticmethod
-    def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
-        """Create a processing strategy based on type."""
-        if strategy_type == "text_first":
-            from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
-            return EnhancedTextFirstProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "image_first":
-            from .image_first_strategy import ImageFirstProcessingStrategy
-            return ImageFirstProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "file_first":
-            from .direct_file_strategy import DirectFileProcessingStrategy
-            return DirectFileProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "none":
-            # No processing
-            return NoOpProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        else:
-            raise ValueError(f"Unsupported processing strategy type: {strategy_type}")
-
-
-class PostProcessingStrategyFactory:
-    """Factory for creating post-processing strategies."""
-    
-    @staticmethod
-    def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False, database_ops = None) -> BaseProcessingStrategy:
-        """Create a post-processing strategy based on type."""
-        if strategy_type == "metadata":
-            # Metadata post-processing strategy
-            return MetadataPostProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        elif strategy_type == "none":
-            # No post-processing
-            return NoOpPostProcessingStrategy(config, streaming=streaming, database_ops=database_ops)
-        else:
-            raise ValueError(f"Unsupported post-processing strategy type: {strategy_type}")
+from .strategy_factory import ProcessingLinkFactory
+from .strategy_factory import PreProcessingLinkFactory
+from .strategy_factory import PostProcessingLinkFactory
 
 
 # Base class for all link strategies (pre-processing, processing, post-processing)
 class LinkStrategy(BaseProcessingStrategy):
     """Base class for chain link strategies."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
         super().__init__(config)
         self.streaming = streaming
-        self.database_ops = database_ops
-
 
 # Pre-processing strategies
 class TextPreProcessingStrategy(LinkStrategy):
@@ -219,8 +157,8 @@ class NoOpProcessingStrategy(LinkStrategy):
 class MetadataPostProcessingStrategy(LinkStrategy):
     """Post-processing strategy for adding metadata."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
-        super().__init__(config, streaming, database_ops)
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
+        super().__init__(config, streaming)
         self.metadata_fields = config.get("metadata_fields", {})
         self.retry_processing = config.get("retry_processing", False)
         self.retry_pre_processing = config.get("retry_pre_processing", False)
@@ -285,10 +223,9 @@ class NoOpPostProcessingStrategy(LinkStrategy):
 class ChainedProcessingStrategy(BaseProcessingStrategy):
 
 
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
         super().__init__(config)
         self.streaming = streaming
-        self.database_ops = database_ops
         
         # Parse the new chain structure
         self.chains_config = config.get("chains", {})
@@ -388,11 +325,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         logging.info(f"   📝 Pre-processing ({pre_type}) for subchain '{subchain_name}'")
         
         try:
-            pre_strategy = PreProcessingStrategyFactory.create_strategy(
+            pre_strategy = PreProcessingLinkFactory.create_strategy(
                 pre_type, 
                 {**self.config, **pre_config}, 
-                streaming=self.streaming, 
-                database_ops=self.database_ops
+                streaming=self.streaming
             )
             
             pre_results, pre_stats, _ = pre_strategy.process_file_group(
@@ -429,11 +365,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         failed_files = []
         
         try:
-            processing_strategy = ProcessingStrategyFactory.create_strategy(
+            processing_strategy = ProcessingLinkFactory.create_strategy(
                 processing_type, 
                 {**self.config, **processing_config}, 
-                streaming=self.streaming, 
-                database_ops=self.database_ops
+                streaming=self.streaming
             )
             
             processing_results, processing_stats, _ = processing_strategy.process_file_group(
@@ -461,8 +396,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     if self.chain_on_missing_keys:
                         model_output = result.get("file_model_output", result)
                         ok, _missing = self.check_mandatory_keys(model_output, file_path, 
-                                                               getattr(self, "benchmark_comparator", None), 
-                                                               self.database_ops)
+                                                               getattr(self, "benchmark_comparator", None))
                         if not ok:
                             subchain_results[file_path]["processing"] = result
                             subchain_results[file_path]["error"] = "Missing mandatory keys after processing"
@@ -494,11 +428,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             logging.info(f"   📋 Post-processing ({post_type}) for subchain '{subchain_name}' on {len(successful_files)} successful file(s)")
             
             try:
-                post_strategy = PostProcessingStrategyFactory.create_strategy(
+                post_strategy = PostProcessingLinkFactory.create_strategy(
                     post_type, 
                     {**self.config, **post_config}, 
-                    streaming=self.streaming, 
-                    database_ops=self.database_ops
+                    streaming=self.streaming
                 )
                 
                 post_results, post_stats, _ = post_strategy.process_file_group(

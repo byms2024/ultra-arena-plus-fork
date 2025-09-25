@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
 from .base_strategy import BaseProcessingStrategy
-from llm_client.llm_client_factory import LLMClientFactory
-from llm_metrics import TokenCounter
+from Ultra_Arena_Main.llm_client.llm_client_factory import LLMClientFactory
+from Ultra_Arena_Main.llm_metrics import TokenCounter
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,7 +19,7 @@ from processors.file_mapping_utils import FileMappingFactory
 class DirectFileProcessingStrategy(BaseProcessingStrategy):
     """Strategy for processing files directly by sending them to LLM."""
     
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
         super().__init__(config)
         self.streaming = streaming
         # Use llm_provider for consistency with configuration structure
