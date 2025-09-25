@@ -452,11 +452,6 @@ def run_file_processing_full(*,config_manager, input_pdf_dir_path: Path, pdf_fil
             except Exception as e:
                 logging.error(f"❌ Failed to initialize benchmark comparator: {e}")
                 benchmark_comparator = None
-        
-        print('❌'*150)
-        print(config)
-        print('❌'*150)
-
 
         # Create processor
         logging.info(f"🔧 Creating ModularParallelProcessor...")

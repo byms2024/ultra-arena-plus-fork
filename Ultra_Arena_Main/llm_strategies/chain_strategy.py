@@ -430,20 +430,28 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         if not isinstance(self.chains_config, dict):
             raise ValueError("chains must be a dictionary")
         
-        for subchain_name, subchain_config in self.chains_config.items():
-            if not isinstance(subchain_config, dict):
-                raise ValueError(f"Subchain '{subchain_name}' must be a dictionary")
-            
-            required_keys = ["pre-processing", "processing", "post-processing"]
-            for key in required_keys:
-                if key not in subchain_config:
-                    raise ValueError(f"Subchain '{subchain_name}' missing required key: {key}")
-                
-                if not isinstance(subchain_config[key], dict):
-                    raise ValueError(f"Subchain '{subchain_name}' {key} must be a dictionary")
-                
-                if "type" not in subchain_config[key]:
-                    raise ValueError(f"Subchain '{subchain_name}' {key} missing 'type' field")
+        for _, subchains in self.chains_config.items():
+            subchain_list = subchains['subchains']
+
+            for subchain in subchain_list:
+                if not isinstance(subchain, dict):
+                    raise ValueError(f"Subchain must be a dictionary")
+                 
+                logging.info(f"⛓⛓⛓ Received subchain:{subchain['subchain_name']} ⛓⛓⛓")
+
+                required_keys = [("pre-processing","pre-type"), ("processing","proc-type"), ("post-processing","post-type")]
+
+                for stage, p_type in required_keys:
+                    if stage not in subchain:
+                        raise ValueError(f"Subchain '{subchain['subchain_name']}' missing required key: {stage}")
+                    
+                    if not isinstance(subchain[stage], dict):
+                        raise ValueError(f"Subchain '{subchain['subchain_name']}' {stage} must be a dictionary")
+                    
+                    if p_type not in subchain[stage]:
+                        raise ValueError(f"Subchain '{subchain['subchain_name']}' {stage} missing {p_type} field")
+                    
+                    logging.info(f'{stage}: {subchain[stage][p_type]}')
 
     def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str
