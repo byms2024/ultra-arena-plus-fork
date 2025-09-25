@@ -102,6 +102,7 @@ class RequestProcessor:
             return {
                 "combo_name": request_config.combo_name,
                 "chain_name": request_config.chain_name,
+                "chain_config" : request_config.chain_config,
                 "input_pdf_dir_path": request_config.input_pdf_dir_path,
                 "benchmark_eval_mode": request_config.final_processing.benchmark_eval_mode,
                 "streaming": request_config.final_processing.streaming,

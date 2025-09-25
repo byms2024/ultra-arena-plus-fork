@@ -52,7 +52,8 @@ class ParameterValidator:
                                     input_pdf_dir_path: Path = None,
                                     pdf_file_paths: List[Path] = [],
                                     output_dir: str = None,
-                                    benchmark_file_path: Path = None) -> ValidationResult:
+                                    benchmark_file_path: Path = None,
+                                    chain_config: Dict = None) -> ValidationResult:
         """
         Validate parameters for run_combo_processing function.
         
@@ -78,7 +79,7 @@ class ParameterValidator:
         # Validate and track benchmark_eval_mode
         validated_params['benchmark_eval_mode'] = bool(benchmark_eval_mode)
         param_sources['benchmark_eval_mode'] = ParameterSource.FUNCTION_ARG
-        
+
         # Validate and track combo_name
         if combo_name is not None:
             validated_params['combo_name'] = combo_name
@@ -86,6 +87,13 @@ class ParameterValidator:
         else:
             validated_params['combo_name'] = None
             param_sources['combo_name'] = ParameterSource.SYSTEM_DEFAULT
+
+        if chain_config:
+            validated_params['chain_config'] = chain_config
+            param_sources['chain_config'] = ParameterSource.FUNCTION_ARG
+        else:
+            validated_params['chain_config'] = None
+            param_sources['chain_config'] = ParameterSource.SYSTEM_DEFAULT
         
         # Validate and track streaming
         validated_params['streaming'] = bool(streaming)

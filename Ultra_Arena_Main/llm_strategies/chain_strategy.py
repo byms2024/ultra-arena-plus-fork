@@ -6,10 +6,14 @@ from typing import Dict, List, Tuple, Optional, Any
 import logging
 import time
 from pathlib import Path
+from collections import Counter
 import re
 
 from ..common.text_extractor import TextExtractor
 from ..common.pdf_metadata import read_pdf_metadata_dict
+
+# from common.text_extractor import TextExtractor
+
 from .base_strategy import BaseProcessingStrategy
 
 from .strategy_factory import ProcessingLinkFactory
@@ -157,6 +161,48 @@ class TextPreProcessingStrategy(LinkStrategy):
         super().__init__(config, streaming)
         # Allow providing regex criteria via config; default to empty dict
         self.regex_criteria = config.get("text_first_regex_criteria", config.get("regex_criteria", {})) or {}
+    
+    def desensitize_content(self, text_content: str, file_Name: str) -> str:
+        from .data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
+        
+        aggregate_values: dict[str, set[str]] = {
+            "CNPJ": set(),
+            "CPF": set(),
+            "CEP": set(),
+            "VIN": set(),
+            "CLAIM": set(),
+            "NAME": set(),
+            "ADDRESS": set(),
+            "PHONE": set(),
+            "ORG": set(),
+            "PLATE": set(),
+        }
+
+        file_text_cache: dict[Path, str] = {}
+
+        vals = _collect_sensitive_values_from_text(text_content)
+        
+        file_text_cache[file_Name] = text_content
+
+        for k, s in vals.items():
+            aggregate_values[k].update(s)
+
+        per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
+
+        hashed_text = _hash_text_with_maps(text_content, per_label_maps)
+
+        try:
+            import csv
+            rev_path = "reverse_map.csv"
+            with rev_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["placeholder", "original"])
+                for placeholder, original in reverse_map.items():
+                    writer.writerow([placeholder, original])
+        except Exception:
+            pass
+        
+        return hashed_text
 
     def extraction_evaluation_regex(self, text_content):
 
@@ -178,7 +224,6 @@ class TextPreProcessingStrategy(LinkStrategy):
                 logging.error(f"❌ Regex evaluation failed for {field_name}: {e}")
         
         return successful_matches
-
 
     def extract_text(self, pdf_path):
         """Try to extract text with two different approach."""
@@ -215,6 +260,9 @@ class TextPreProcessingStrategy(LinkStrategy):
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str = "") -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Apply text pre-processing to files."""
         start_time = time.time()
+        processed_texts = []
+        original_filenames = []
+        successful_files = []
         results = []
         
         for file_path in file_group:
@@ -243,15 +291,40 @@ class TextPreProcessingStrategy(LinkStrategy):
                 if self.config.get("store_raw_pdf_info", False):
                     self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
 
+            
+            # Extract file content
             text_content = self.extract_text(file_path)
 
-            result = {"preprocessed": True, "preprocessing_type": "text"}
-            results.append((file_path, result))
-        
+            # If extracted, checks if it desensitization is needed
+            if text_content:
+                if self.desensitization_config:
+                    text_to_add = self.desensitize_content(text_content, Path(file_path).name)
+                else:
+                    text_to_add = text_content
+                
+                # Store results
+                processed_texts.append(text_to_add)
+                original_filenames.append(Path(file_path).name)
+                successful_files.append(file_path)
+                result = {  "preprocessed": True,
+                            "preprocessing_type": "text",
+                            "preprocessing_result" : text_to_add}
+                results.append((file_path, result))
+            
+            # If extraction failed, store results
+            else:
+                result = {  "preprocessed": False,
+                            "preprocessing_type": "text",
+                            "preprocessing_result":"No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}
+                results.append((file_path, result))
+
+        preprocessed_values = (result_dict.get('preprocessed') for _, result_dict in results)
+        counts = Counter(preprocessed_values)
+
         agg_stats = {
             "total_files": len(file_group),
-            "successful_files": len(file_group),
-            "failed_files": 0,
+            "successful_files": counts.get(True, 0),
+            "failed_files": counts.get(False, 0),
             "total_tokens": 0,
             "estimated_tokens": 0,
             "processing_time": int(time.time() - start_time)
@@ -363,7 +436,6 @@ class NoOpProcessingStrategy(LinkStrategy):
         }
         
         return results, agg_stats, group_id
-
 
 # Post-processing strategies
 class MetadataPostProcessingStrategy(LinkStrategy):
@@ -514,7 +586,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         self.streaming = streaming
         
         # Parse the new chain structure
-        self.chains_config = config.get("chains", {})
+        self.chains_config = config.get("chain_config", {})
         if not self.chains_config:
             raise ValueError("chains configuration must be provided for AdvancedChainedProcessingStrategy")
         
@@ -528,20 +600,28 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         if not isinstance(self.chains_config, dict):
             raise ValueError("chains must be a dictionary")
         
-        for subchain_name, subchain_config in self.chains_config.items():
-            if not isinstance(subchain_config, dict):
-                raise ValueError(f"Subchain '{subchain_name}' must be a dictionary")
-            
-            required_keys = ["pre-processing", "processing", "post-processing"]
-            for key in required_keys:
-                if key not in subchain_config:
-                    raise ValueError(f"Subchain '{subchain_name}' missing required key: {key}")
-                
-                if not isinstance(subchain_config[key], dict):
-                    raise ValueError(f"Subchain '{subchain_name}' {key} must be a dictionary")
-                
-                if "type" not in subchain_config[key]:
-                    raise ValueError(f"Subchain '{subchain_name}' {key} missing 'type' field")
+        for _, subchains in self.chains_config.items():
+            subchain_list = subchains['subchains']
+
+            for subchain in subchain_list:
+                if not isinstance(subchain, dict):
+                    raise ValueError(f"Subchain must be a dictionary")
+                 
+                logging.info(f"⛓⛓⛓ Received subchain:{subchain['subchain_name']} ⛓⛓⛓")
+
+                required_keys = [("pre-processing","pre-type"), ("processing","proc-type"), ("post-processing","post-type")]
+
+                for stage, p_type in required_keys:
+                    if stage not in subchain:
+                        raise ValueError(f"Subchain '{subchain['subchain_name']}' missing required key: {stage}")
+                    
+                    if not isinstance(subchain[stage], dict):
+                        raise ValueError(f"Subchain '{subchain['subchain_name']}' {stage} must be a dictionary")
+                    
+                    if p_type not in subchain[stage]:
+                        raise ValueError(f"Subchain '{subchain['subchain_name']}' {stage} missing {p_type} field")
+                    
+                    logging.info(f'{stage}: {subchain[stage][p_type]}')
 
     def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str
@@ -679,7 +759,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 group_index=group_index,
                 group_id=f"{group_id}_{subchain_name}_processing",
                 system_prompt=system_prompt,
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
+                pre_results = pre_results
             )
             
             agg_stats["estimated_tokens"] += processing_stats.get("estimated_tokens", 0)

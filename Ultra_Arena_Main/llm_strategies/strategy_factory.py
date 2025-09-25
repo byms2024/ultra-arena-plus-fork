@@ -72,6 +72,9 @@ class ProcessingLinkFactory:
         elif strategy_type == "file_first":
             from .direct_file_strategy import DirectFileProcessingStrategy
             return DirectFileProcessingStrategy(config, streaming=streaming)
+        elif strategy_type == "chain":
+            from .chain_strategy import ChainedProcessingStrategy
+            return ChainedProcessingStrategy(config, streaming=streaming)
         else:
             raise ValueError(f"Unsupported processing strategy type: {strategy_type}")
 

@@ -57,6 +57,7 @@ class RequestConfigAssembler:
             request_config = RequestConfig(
                 combo_name=request_overrides.get('combo_name'),
                 chain_name=request_overrides.get('chain_name'),
+                chain_config=request_overrides.get('chain_config'),
                 input_pdf_dir_path=request_overrides.get('input_pdf_dir_path'),
                 output_dir=request_overrides.get('output_dir'),
                 benchmark_file_path=request_overrides.get('benchmark_file_path'),

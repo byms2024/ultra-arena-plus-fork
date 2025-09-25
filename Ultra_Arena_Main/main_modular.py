@@ -323,6 +323,7 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
     elif strategy_type == STRATEGY_CHAIN:
         # Pass-through for chain: caller must provide chain_steps and flags in higher-level param group
         config = {
+            "text_first_regex_criteria": TEXT_FIRST_REGEX_CRITERIA,
             "llm_provider": llm_provider or config_base.DEFAULT_LLM_PROVIDER,
             "provider_configs": IMAGE_PROVIDER_CONFIGS | TEXT_PROVIDER_CONFIGS | DIRECT_FILE_PROVIDER_CONFIGS,
             "mandatory_keys": config_base.MANDATORY_KEYS,
@@ -332,7 +333,7 @@ def get_config_for_strategy(strategy_type: str, llm_provider: str = None, llm_mo
             "max_retries": config_base.API_INFRA_MAX_RETRIES,
             "retry_delay_seconds": config_base.API_INFRA_RETRY_DELAY_SECONDS,
             # Chain-specific fields expected to be injected by param groups or API layer
-            "chain_steps": getattr(config_base, "CHAIN_STEPS", []),
+            "chain_config": getattr(config_base, "CHAIN_CONFIG", []),
             "chain_on_missing_keys": getattr(config_base, "CHAIN_ON_MISSING_KEYS", False),
         }
         return config
@@ -348,7 +349,8 @@ def run_file_processing_full(*,config_manager, input_pdf_dir_path: Path, pdf_fil
                        llm_provider: str = None, llm_model: str = None,
                        csv_output_file: str = None, benchmark_eval_mode: bool = False,
                        streaming: bool = False, max_files_per_request: int = None,
-                       benchmark_file_path: Path = None) -> Dict[str, Any]:
+                       benchmark_file_path: Path = None,
+                       chain_config: Dict = None) -> Dict[str, Any]:
     """
     Full-featured synchronous main entry point for batch processing using the modular system.
     
@@ -450,7 +452,7 @@ def run_file_processing_full(*,config_manager, input_pdf_dir_path: Path, pdf_fil
             except Exception as e:
                 logging.error(f"❌ Failed to initialize benchmark comparator: {e}")
                 benchmark_comparator = None
-        
+
         # Create processor
         logging.info(f"🔧 Creating ModularParallelProcessor...")
         processor = ModularParallelProcessor(
@@ -498,7 +500,8 @@ def run_file_processing(*,config_manager, input_pdf_dir_path: Path, pdf_file_pat
                       llm_provider: str = None, llm_model: str = None,
                       csv_output_file: str = None, benchmark_eval_mode: bool = False,
                       streaming: bool = False, max_files_per_request: int = None,
-                      benchmark_file_path: Path = None) -> Dict[str, Any]:
+                      benchmark_file_path: Path = None,
+                      chain_config: Dict = None) -> Dict[str, Any]:
     """
     Simplified wrapper function for file processing with default values from config_base.py.
     
@@ -536,7 +539,8 @@ def run_file_processing(*,config_manager, input_pdf_dir_path: Path, pdf_file_pat
         streaming=streaming,
         max_files_per_request=max_files_per_request,
         benchmark_file_path=benchmark_file_path,
-        config_manager=config_manager
+        config_manager=config_manager,
+        chain_config=chain_config
     )
 
 
@@ -667,7 +671,8 @@ def _run_combo_processing_parallel(config_manager, benchmark_eval_mode: bool = F
                                 input_pdf_dir_path: Path = None,
                                 pdf_file_paths: List[Path] = [],
                                 output_dir: str = None,
-                                benchmark_file_path: Path = None) -> int:
+                                benchmark_file_path: Path = None,
+                                chain_config: Dict = None) -> int:
     """Run combination processing with strategy-level parallelization."""
     
     try:
@@ -809,7 +814,8 @@ def _run_combo_processing_parallel(config_manager, benchmark_eval_mode: bool = F
                             json_filename=json_filename,
                             csv_filename=csv_filename,
                             benchmark_file_path=benchmark_file_path,
-                            config_manager = config_manager
+                            config_manager = config_manager,
+                            chain_config=chain_config
                         )
                         futures.append((group_name, future))
                     
@@ -856,7 +862,8 @@ def _process_single_strategy(config_manager, group_name: str, group_params: Dict
                            pdf_file_paths: List[Path], benchmark_eval_mode: bool, streaming: bool, 
                            max_cc_filegroups: int = 5, max_files_per_request: int = None,
                            json_filename: str = None, csv_filename: str = None,
-                           benchmark_file_path: Path = None) -> Dict[str, Any]:
+                           benchmark_file_path: Path = None,
+                           chain_config: Dict = None) -> Dict[str, Any]:
     """Process a single strategy within a combo run."""
     logging.info(f"⚙️ Processing parameter group: {group_name}")
     logging.info(f"📋 Parameters: {group_params}")
@@ -880,12 +887,13 @@ def _process_single_strategy(config_manager, group_name: str, group_params: Dict
     
     logging.info(f"📄 Output files: {output_file}, {csv_output_file}")
     
+    import config.config_base as config_base
+
     # Run the processing
     # Inject chain params for STRATEGY_CHAIN so get_config_for_strategy can read them
     try:
         if strategy == STRATEGY_CHAIN:
-            import config.config_base as config_base
-            config_base.CHAIN_STEPS = group_params.get("chain_steps", [])
+            config_base.CHAIN_CONFIG = chain_config
             config_base.CHAIN_ON_MISSING_KEYS = group_params.get("chain_on_missing_keys", False)
     except Exception:
         pass
@@ -907,7 +915,8 @@ def _process_single_strategy(config_manager, group_name: str, group_params: Dict
         streaming=streaming,
         max_files_per_request=max_files_per_request,
         benchmark_file_path=benchmark_file_path,
-        config_manager=config_manager
+        config_manager=config_manager,
+        chain_config=chain_config
     )
     
     return results
@@ -919,7 +928,8 @@ def run_combo_processing(config_manager, benchmark_eval_mode: bool = False, comb
                         input_pdf_dir_path: Path = None,
                         pdf_file_paths: List[Path] = [],
                         output_dir: str = None,
-                        benchmark_file_path: Path = None,) -> int:
+                        benchmark_file_path: Path = None,
+                        chain_config: Dict = None) -> int:
     """Run combination processing using centralized configuration."""
     
     # Validate parameters using the new validator
@@ -944,7 +954,8 @@ def run_combo_processing(config_manager, benchmark_eval_mode: bool = False, comb
         input_pdf_dir_path=input_pdf_dir_path,
         pdf_file_paths=pdf_file_paths,
         output_dir=output_dir,
-        benchmark_file_path=benchmark_file_path
+        benchmark_file_path=benchmark_file_path,
+        chain_config=chain_config
     )
     
     if not validation_result.is_valid:
@@ -973,7 +984,8 @@ def run_combo_processing(config_manager, benchmark_eval_mode: bool = False, comb
         pdf_file_paths=validated_params['pdf_file_paths'],
         output_dir=validated_params['output_dir'],
         benchmark_file_path=validated_params['benchmark_file_path'],
-        config_manager = config_manager
+        config_manager = config_manager,
+        chain_config = chain_config
     )
 
 

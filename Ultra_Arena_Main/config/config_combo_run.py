@@ -355,6 +355,11 @@ combo_config = {
         "strategy_groups" : [
             "grp_test_imageF_claude_para"
         ]
+    },
+    'chain_strategy' : {
+        "strategy_groups" : [
+            "grp_chain_df_tf_if_google_para"
+        ]
     }
 
 
