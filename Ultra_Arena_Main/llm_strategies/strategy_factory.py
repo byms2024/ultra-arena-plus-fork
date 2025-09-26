@@ -206,7 +206,7 @@ class TextPreProcessingStrategy(LinkStrategy):
             "PLATE": set(),
         }
 
-        file_text_cache: dict[Path, str] = {}
+        file_text_cache: dict[str, str] = {}
 
         vals = _collect_sensitive_values_from_text(text_content)
         
@@ -221,7 +221,7 @@ class TextPreProcessingStrategy(LinkStrategy):
 
         try:
             import csv
-            rev_path = "reverse_map.csv"
+            rev_path = Path("reverse_map.csv")
             with rev_path.open("w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(["placeholder", "original"])
@@ -329,7 +329,7 @@ class TextPreProcessingStrategy(LinkStrategy):
 
             # If extracted, checks if it desensitization is needed
             if text_content:
-                if self.desensitization_config:
+                if getattr(self, "desensitization_config", None):
                     text_to_add = self.desensitize_content(text_content, Path(file_path).name)
                 else:
                     text_to_add = text_content
@@ -493,18 +493,28 @@ class MetadataPostProcessingStrategy(LinkStrategy):
             # Merge configured metadata with any pre-extracted passthrough metadata
             merged_metadata = self.metadata_fields.copy()
             if self.passthrough:
-                # Find corresponding entry
+                # Find corresponding entry (absolute match, then basename match)
                 for entry in self.passthrough.get("files", []):
+                    matched = False
                     if entry.get("file_path") == file_path:
+                        matched = True
+                    else:
+                        try:
+                            from pathlib import Path as _P
+                            matched = _P(str(entry.get("file_path"))).name == _P(str(file_path)).name
+                        except Exception:
+                            matched = False
+                    if not matched:
+                        continue
                         # Bring DMS mapped values into metadata namespace for downstream use
-                        x = entry.get("extracted_data", {})
-                        for k in [
-                            "claim_id", "claim_no", "vin", "dealer_code", "dealer_name", "cnpj1",
-                            "gross_credit_dms", "labour_amount_dms", "part_amount_dms", "dms_file_id", "dms_embedded_at",
-                        ]:
-                            if k in x and x[k] is not None:
-                                merged_metadata[k] = x[k]
-                        break
+                    x = entry.get("extracted_data", {})
+                    for k in [
+                        "claim_id", "claim_no", "vin", "dealer_code", "dealer_name", "cnpj1",
+                        "gross_credit_dms", "labour_amount_dms", "part_amount_dms", "dms_file_id", "dms_embedded_at",
+                    ]:
+                        if k in x and x[k] is not None:
+                            merged_metadata[k] = x[k]
+                    break
 
             result = {
                 "postprocessed": True,
@@ -520,6 +530,21 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                         if entry.get("file_path") == file_path:
                             proc_raw = entry.get("processing_output", {}) or {}
                             dms = entry.get("extracted_data", {}) or {}
+                            proc_norm = entry.get("processing_extracted_data", {}) or {}
+                            matched = True
+                        else:
+                            matched = False
+                        if not matched:
+                            try:
+                                from pathlib import Path as _P
+                                if _P(str(entry.get("file_path"))).name == _P(str(file_path)).name:
+                                    proc_raw = entry.get("processing_output", {}) or {}
+                                    dms = entry.get("extracted_data", {}) or {}
+                                    matched = True
+                            except Exception:
+                                matched = False
+                        if not matched:
+                            continue
 
                             def pick(obj, keys):
                                 for k in keys:
@@ -533,13 +558,13 @@ class MetadataPostProcessingStrategy(LinkStrategy):
 
                             # Normalize processing result into extracted_data schema
                             proc_fields = {
-                                "type": pick(proc_raw, ["type", "DOC_TYPE", "document_type"]),
-                                "cnpj": pick(proc_raw, ["cnpj", "CNPJ"]),
-                                "cnpj2": pick(proc_raw, ["cnpj2", "CNPJ2"]),
-                                "vin": pick(proc_raw, ["vin", "VIN"]),
-                                "claim_no": pick(proc_raw, ["claim_no", "CLAIM_NO"]),
-                                "parts_value": pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount"]),
-                                "service_value": pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount"]),
+                                "type": pick(proc_norm, ["type"]) or pick(proc_raw, ["type", "DOC_TYPE", "document_type", "class"]),
+                                "cnpj": pick(proc_norm, ["cnpj"]) or pick(proc_raw, ["cnpj", "CNPJ", "collected_CNPJ"]),
+                                "cnpj2": pick(proc_norm, ["cnpj2"]) or pick(proc_raw, ["cnpj2", "CNPJ2", "collected_CNPJ2"]),
+                                "vin": pick(proc_norm, ["vin"]) or pick(proc_raw, ["vin", "VIN", "collected_VIN"]),
+                                "claim_no": pick(proc_norm, ["claim_no"]) or pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO"]),
+                                "parts_value": pick(proc_norm, ["parts_value"]) or pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount", "collected_parts_price"]),
+                                "service_value": pick(proc_norm, ["service_value"]) or pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount", "collected_service_price"]),
                             }
 
                             # Compare with DMS metadata (from pre-processing)
