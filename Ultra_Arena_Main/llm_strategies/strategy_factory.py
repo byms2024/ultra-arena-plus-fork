@@ -23,8 +23,8 @@ class ProcessingStrategyFactory:
             from .direct_file_strategy import DirectFileProcessingStrategy
             return DirectFileProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "text_first":
-            from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
-            return EnhancedTextFirstProcessingStrategy(config, streaming=streaming)
+            from .text_first_gemini import TextPreProcessingStrategy
+            return TextPreProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "image_first":
             from .image_first_strategy import ImageFirstProcessingStrategy
             return ImageFirstProcessingStrategy(config, streaming=streaming)
@@ -59,6 +59,7 @@ class PreProcessingLinkFactory:
     def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False) -> BaseProcessingStrategy:
         """Create a pre-processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "text":
+            from .text_first_gemini import TextPreProcessingStrategy
             strategy = TextPreProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "image":
             strategy = ImagePreProcessingStrategy(config, streaming=streaming)
@@ -92,8 +93,8 @@ class ProcessingLinkFactory:
     def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False) -> BaseProcessingStrategy:
         """Create a processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "text_first":
-            from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
-            strategy = EnhancedTextFirstProcessingStrategy(config, streaming=streaming)
+            from .text_first_gemini import TextFirstProcessingStrategy
+            strategy = TextFirstProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "image_first":
             from .image_first_strategy import ImageFirstProcessingStrategy
             strategy = ImageFirstProcessingStrategy(config, streaming=streaming)
@@ -180,189 +181,6 @@ class LinkStrategy(BaseProcessingStrategy):
         entry = self._get_or_create_file_entry(file_path)
         data = entry.setdefault("extracted_data", {})
         data.update(updates)
-
-# Pre-processing strategies
-class TextPreProcessingStrategy(LinkStrategy):
-    """Pre-processing strategy for text-based operations."""
-
-    def __init__(self, config: Dict[str, Any], streaming: bool = False):
-        super().__init__(config, streaming)
-        # Allow providing regex criteria via config; default to empty dict
-        self.regex_criteria = config.get("text_first_regex_criteria", config.get("regex_criteria", {})) or {}
-    
-    def desensitize_content(self, text_content: str, file_Name: str) -> str:
-        from .data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
-        
-        aggregate_values: dict[str, set[str]] = {
-            "CNPJ": set(),
-            "CPF": set(),
-            "CEP": set(),
-            "VIN": set(),
-            "CLAIM": set(),
-            "NAME": set(),
-            "ADDRESS": set(),
-            "PHONE": set(),
-            "ORG": set(),
-            "PLATE": set(),
-        }
-
-        file_text_cache: dict[Path, str] = {}
-
-        vals = _collect_sensitive_values_from_text(text_content)
-        
-        file_text_cache[file_Name] = text_content
-
-        for k, s in vals.items():
-            aggregate_values[k].update(s)
-
-        per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
-
-        hashed_text = _hash_text_with_maps(text_content, per_label_maps)
-
-        try:
-            import csv
-            rev_path = "reverse_map.csv"
-            with rev_path.open("w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["placeholder", "original"])
-                for placeholder, original in reverse_map.items():
-                    writer.writerow([placeholder, original])
-        except Exception:
-            pass
-        
-        return hashed_text
-
-    def extraction_evaluation_regex(self, text_content):
-
-        if not text_content:
-            logging.warning(f"⚠️ Cannot evaluate empty text from extractor")
-            return 0
-
-        successful_matches = 0
-        match_details = []
-        
-        for field_name, regex_pattern in self.regex_criteria.items():
-            try:
-                matches = re.findall(regex_pattern, text_content)
-                if matches:
-                    successful_matches += 1
-                    match_details.append(f"{field_name}: {len(matches)} match(es)")
-
-            except Exception as e:
-                logging.error(f"❌ Regex evaluation failed for {field_name}: {e}")
-        
-        return successful_matches
-
-    def extract_text(self, pdf_path):
-        """Try to extract text with two different approach."""
-
-        logging.info(f"🔄 Extracting text from PDF: {Path(pdf_path).name}")
-
-        # Set extractors
-        from ..common.text_extractor import TextExtractor
-
-        self.primary_extractor = TextExtractor('pymupdf')
-        self.secundary_extractor = TextExtractor('pytesseract')
-
-        # Extract with Primary Extractor
-        primary_text = self.primary_extractor.extract_text(pdf_path, max_length=50000)
-        primary_score = self.extraction_evaluation_regex(primary_text)
-        chosen_text = primary_text
-
-        # Decides whether should try the second option
-        should_try_secondary = (
-            ((not primary_text) or (len(primary_text) < 1000)) and 
-            self.primary_extractor.extractor_lib != self.secundary_extractor.extractor_lib
-        )
-
-        # Tries second option and decides which text to use 
-        if should_try_secondary:
-            secondary_text = self.secundary_extractor.extract_text(pdf_path, max_length=50000)
-            secondary_score = self.extraction_evaluation_regex(secondary_text)
-
-            # Only selects the second if 2_score > 1_score or only the second has actually extracted text. 
-            if (secondary_score, bool(secondary_text)) > (primary_score, bool(primary_text)):
-                chosen_text = secondary_text
-        
-        return chosen_text
-
-    def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
-                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str = "") -> Tuple[List[Tuple[str, Dict]], Dict, str]:
-        """Apply text pre-processing to files."""
-        start_time = time.time()
-        processed_texts = []
-        original_filenames = []
-        successful_files = []
-        results = []
-        
-        for file_path in file_group:
-            # Optionally read and store PDF metadata (including DmsData)
-            from ..common.pdf_metadata import read_pdf_metadata_dict
-
-            if self.config.get("enable_pdf_metadata", False):
-                meta = read_pdf_metadata_dict(file_path)
-                # Push parsed DMS data into passthrough extracted_data
-                dms = meta.get("dms_data") or {}
-                if dms:
-                    # Map keys we care about directly
-                    mapped = {
-                        "claim_id": dms.get("claim_id"),
-                        "claim_no": dms.get("claim_no"),
-                        "vin": dms.get("vin"),
-                        "dealer_code": dms.get("dealer_code"),
-                        "dealer_name": dms.get("dealer_name"),
-                        "cnpj1": dms.get("dealer_cnpj"),  # BYD CNPJ per example
-                        "gross_credit_dms": dms.get("gross_credit"),
-                        "labour_amount_dms": dms.get("labour_amount_dms"),
-                        "part_amount_dms": dms.get("part_amount_dms"),
-                        "dms_file_id": dms.get("file_id"),
-                        "dms_embedded_at": dms.get("embedded_at"),
-                    }
-                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
-                # Optionally keep raw document info
-                if self.config.get("store_raw_pdf_info", False):
-                    self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
-
-            
-            # Extract file content
-            text_content = self.extract_text(file_path)
-
-            # If extracted, checks if it desensitization is needed
-            if text_content:
-                if self.desensitization_config:
-                    text_to_add = self.desensitize_content(text_content, Path(file_path).name)
-                else:
-                    text_to_add = text_content
-                
-                # Store results
-                processed_texts.append(text_to_add)
-                original_filenames.append(Path(file_path).name)
-                successful_files.append(file_path)
-                result = {  "preprocessed": True,
-                            "preprocessing_type": "text",
-                            "preprocessing_result" : text_to_add}
-                results.append((file_path, result))
-            
-            # If extraction failed, store results
-            else:
-                result = {  "preprocessed": False,
-                            "preprocessing_type": "text",
-                            "preprocessing_result":"No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}
-                results.append((file_path, result))
-
-        preprocessed_values = (result_dict.get('preprocessed') for _, result_dict in results)
-        counts = Counter(preprocessed_values)
-
-        agg_stats = {
-            "total_files": len(file_group),
-            "successful_files": counts.get(True, 0),
-            "failed_files": counts.get(False, 0),
-            "total_tokens": 0,
-            "estimated_tokens": 0,
-            "processing_time": int(time.time() - start_time)
-        }
-        
-        return results, agg_stats, group_id
 
 
 class ImagePreProcessingStrategy(LinkStrategy):
