@@ -14,6 +14,8 @@ from unittest import result
 from oracledb import dataframe
 import pandas as pd
 
+from Ultra_Arena_Main.llm_strategies.strategy_factory import LinkStrategy
+
 
 
 # Optional OCR / PDF tooling
@@ -294,7 +296,7 @@ class PdfTextExtractor:
             except Exception:
                 extracted_text = ""
 
-        if len(extracted_text) < 10000 and _ocr_available:
+        if len(extracted_text) < 1000 and _ocr_available:
             images = []
             poppler_bin = _find_poppler_bin()
             if poppler_bin is not None:
@@ -492,6 +494,8 @@ def categorize_pdfs(root: str | Path) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for file_path in _iter_pdf_files(root_path):
         text = PdfTextExtractor.extract_text_best_effort(file_path)
+        print("=================================text================================")
+        print(text)
         doc_class = PdfClassifier.classify_pdf(text)
         rows.append({"file": str(file_path), "class": doc_class})
     return pd.DataFrame(rows, columns=["file", "class"]) if rows else pd.DataFrame(columns=["file", "class"])
@@ -585,22 +589,18 @@ def _collect_from_files(
 
         return data, used_answers
 
-def mock_build_answers_from_pdfs(file_paths: list[str]) -> Answers:
-    """
-    Mock: derive target values from the PDF set. Replace with metadata-driven logic later.
-    """
-    return Answers()  # all None; override via manual answers if provided
 
-
-class RegexPreProcessingStrategy:
-    def __init__(self, config: Dict[str, Any] | None = None):
+class RegexPreProcessingStrategy(LinkStrategy):
+    def __init__(self, config: Dict[str, Any] | None = None, streaming: bool = False):
+        super().__init__(config, streaming)
         self.config = config or {}
+        self.streaming = streaming
 
     def preprocess_filepaths(self, file_paths: list[str], manual_answers: Optional[Answers] = None) -> PreprocessedData:
         files: list[Path] = [Path(f).expanduser().resolve() for f in file_paths]
 
-        # Build targets via mock, then override with any manual answers provided
-        auto_answers = mock_build_answers_from_pdfs(file_paths)
+        auto_answers = self.get_target_from_pdfs_metadata(file_paths)
+       
         if manual_answers is not None:
             auto_answers = Answers(
                 claim_no=manual_answers.claim_no if manual_answers.claim_no is not None else auto_answers.claim_no,
@@ -623,31 +623,91 @@ class RegexPreProcessingStrategy:
             file_classes=file_classes,
             answers=auto_answers,
         )
+    
+    def get_target_from_pdfs_metadata(self, file_group: list[str]) -> dict[str, dict]:
+        from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
+        answers: dict[str, dict] = {}
 
-    def preprocess_file_groups(self, file_groups: list[list[str]]) -> list[PreprocessedData]:
-        bundles: list[PreprocessedData] = []
-        for group in file_groups:
-            bundles.append(self.preprocess_filepaths(group))
-        return bundles
+        for file_path in file_group:
+            meta = read_pdf_metadata_dict(file_path)
+            # Push parsed DMS data into passthrough extracted_data
+            dms = meta.get("dms_data") or {}
+            if dms:
+                # Map keys we care about directly
+                mapped = {
+                    "claim_id": dms.get("claim_id"),
+                    "claim_no": dms.get("claim_no"),
+                    "vin": dms.get("vin"),
+                    "dealer_code": dms.get("dealer_code"),
+                    "dealer_name": dms.get("dealer_name"),
+                    "cnpj1": dms.get("dealer_cnpj"),  # BYD CNPJ per example
+                    "gross_credit_dms": dms.get("gross_credit"),
+                    "labour_amount_dms": dms.get("labour_amount_dms"),
+                    "part_amount_dms": dms.get("part_amount_dms"),
+                    "dms_file_id": dms.get("file_id"),
+                    "dms_embedded_at": dms.get("embedded_at"),
+                }
+                # Store as a dict, not as an Answers object
+                answers[Path(file_path).expanduser().resolve()] = {
+                    "claim_no": mapped.get("claim_no"),
+                    "vin": mapped.get("vin"),
+                    "service_price": mapped.get("gross_credit_dms"),
+                    "parts_price": mapped.get("part_amount_dms"),
+                    "cnpj": mapped.get("cnpj1"),
+                }
+                self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+            # Optionally keep raw document info
+            if self.config.get("store_raw_pdf_info", False):
+                self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+
+        return answers  # dict mapping file_path to dict; override via manual answers if provided
 
 
-class RegexProcessingStrategy(BaseProcessingStrategy):
-    def __init__(self, config: Dict[str, Any], streaming: bool = False, answers: Dict[str, Any] = None):
+    def process_file_group(
+        self,
+        *,
+        config_manager=None,
+        file_group: list[str],
+        group_index: int,
+        group_id: str = "",
+        system_prompt: str = None,
+        user_prompt: str = None,
+        **kwargs
+    ) -> tuple[list[PreprocessedData], dict, str]:
+        """
+        Process a group of files for pre-processing (text extraction, classification, answer inference).
+        Returns a tuple: (list of PreprocessedData, stats dict, info string)
+        """
+        bundles = [self.preprocess_filepaths(file_group)]
+        # Batch the entire file_group in a single preprocessing call
+        stats = {"total_files": len(file_group)}
+        info = ""
+        return  bundles, stats, info
+
+
+
+class RegexProcessingStrategy(LinkStrategy):
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
         super().__init__(config)
         self.streaming = streaming
         self.llm_provider = config.get("llm_provider", "google")
         self.provider_config = config.get("provider_configs", {}).get(self.llm_provider, {})
         self.regex_patterns = config.get("regex_patterns", {})
-        self.fallback_llm = config.get("fallback_llm", True)
-        self.answers = answers
-
-        # Initialize LLM client if fallback is enabled
+        # Disable LLM fallback by default to avoid requiring provider credentials
+        self.fallback_llm = bool(config.get("fallback_llm", False))
+        # Initialize LLM client only if explicitly enabled and configured
         self.llm_client = None
-        if self.fallback_llm:
-            self.llm_client = LLMClientFactory.create_client(self.llm_provider, self.provider_config, streaming=self.streaming)
+        if self.fallback_llm and self.provider_config:
+            try:
+                self.llm_client = LLMClientFactory.create_client(
+                    self.llm_provider, self.provider_config, streaming=self.streaming
+                )
+            except Exception as e:
+                logging.warning(f"LLM fallback disabled due to client init error: {e}")
+                self.llm_client = None
 
     def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
-                          group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
+                          group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str, pre_results: List[PreprocessedData] = None) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """
         Process a group of files using regex-based extraction.
 
@@ -665,6 +725,16 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
             "processing_time": 0
         }
 
+
+        # Use the answers from pre_results (a list of PreprocessedData) to set self.answers
+        self.answers = None
+        if pre_results and isinstance(pre_results, list) and len(pre_results) > 0:
+            # Use the answers from the first PreprocessedData (assuming all files in group share answers)
+            first_pre = pre_results[0]
+            if hasattr(first_pre, "answers"):
+                self.answers = first_pre.answers
+
+
         try:
             # Prepare manual overrides from self.answers if present
             manual_answers = None
@@ -677,29 +747,30 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
                     cnpj=getattr(self.answers, "cnpj", None),
                 )
 
-            # Preprocess
-            preprocessor = RegexPreProcessingStrategy(self.config)
-            pre = preprocessor.preprocess_filepaths(file_group, manual_answers=manual_answers)
-
             # Process
-            df = self.process_preprocessed_filepaths(pre)
-
+            df = self.process_preprocessed_filepaths(pre_results)
+            for col in df.columns:
+                print(f"Column: {col}")
+                for entry in df[col]:
+                    print(entry)
+                print("-" * 20)
+            print(df)
             # For each file, collect the corresponding row as a dict
-            for idx, file_path in enumerate(file_group):
+            for idx, row in df.iterrows():
                 try:
-                    row = df[df["file"] == str(Path(file_path).expanduser().resolve())]
-                    if not row.empty:
-                        file_result = row.iloc[0].to_dict()
-                        results.append((file_path, file_result))
-                        agg_stats["successful_files"] += 1
-                    else:
-                        error_result = {"error": "No data extracted", "file_path": file_path}
-                        results.append((file_path, error_result))
+                    file_path = row.get("file", None)
+                    if file_path is None:
+                        error_result = {"error": "No file path in row", "file_path": None}
+                        results.append((None, error_result))
                         agg_stats["failed_files"] += 1
+                        continue
+                    file_result = row.to_dict()
+                    results.append((file_path, file_result))
+                    agg_stats["successful_files"] += 1
                 except Exception as e:
-                    logging.error(f"❌ Error extracting row for file {file_path}: {e}")
-                    error_result = {"error": str(e), "file_path": file_path}
-                    results.append((file_path, error_result))
+                    logging.error(f"❌ Error extracting row for file {row.get('file', None)}: {e}")
+                    error_result = {"error": str(e), "file_path": row.get("file", None)}
+                    results.append((row.get("file", None), error_result))
                     agg_stats["failed_files"] += 1
 
         except Exception as e:
@@ -713,158 +784,27 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
 
         return results, agg_stats, "completed"
 
-    def _process_single_file_with_regex(self, file_path: str) -> Dict[str, Any]:
-        """
-        Process a single file using regex patterns.
-
-        This is a placeholder implementation that returns mock data.
-        Replace with actual regex processing logic.
-        """
-        # Placeholder implementation - return mock extracted data
-        
-        result_dataframe = process_filepaths([file_path], self.answers.claim_no, self.answers.vin, self.answers.service_price, self.answers.parts_price, self.answers.cnpj)
-
-        
-
-        logging.info(f"📄 Regex processed file: {file_path}")
-
-        return result
 
     def process_preprocessed_filepaths(self, pre: PreprocessedData) -> pd.DataFrame:
-        files = pre.files
-        file_texts = pre.file_texts
-        file_classes = pre.file_classes
-        answers = pre.answers
 
         rows: list[dict[str, Any]] = []
         found_service_price_any = False
         found_parts_price_any = False
         temp_rows: dict[Path, dict[str, Any]] = {}
 
-        for f in files:
-            cls = file_classes.get(f, "Outros")
-            text = file_texts.get(f, "")
+        for p in pre:
 
-            row: dict[str, Any] = {
-                "file": str(f),
-                "class": cls,
-                "collected_service_price": "",
-                "collected_parts_price": "",
-                "collected_CNPJ": "",
-                "collected_CNPJ2": "",
-                "collected_VIN": "",
-                "collected_ClaimNO": "",
-                "search_mode": "blind",
-            }
+            for f in p.files:
+                file_texts = p.file_texts.get(f, "")
+                file_classes = p.file_classes.get(f, "")
+                answers = p.answers.get(f, "")
 
-            used_answers_any = False
+                cls = file_classes
+                text = file_texts
 
-            if cls == "Serviço":
-                m = FieldExtractor.match_expected_claim_no(text, answers.claim_no)
-                if m:
-                    row["collected_ClaimNO"] = m
-                    used_answers_any = True
-                if not row["collected_ClaimNO"]:
-                    b = FieldExtractor.extract_claim_no_blind(text)
-                    if b:
-                        row["collected_ClaimNO"] = b
-
-                m = FieldExtractor.match_expected_vin(text, answers.vin)
-                if m:
-                    row["collected_VIN"] = m
-                    used_answers_any = True
-                if not row["collected_VIN"]:
-                    b = FieldExtractor.extract_vin_blind(text)
-                    if b:
-                        row["collected_VIN"] = b
-
-                m = FieldExtractor.match_expected_cnpj(text, answers.cnpj)
-                if m:
-                    row["collected_CNPJ"] = m
-                    used_answers_any = True
-                if not row["collected_CNPJ"]:
-                    b = FieldExtractor.extract_cnpj_blind(text)
-                    if b:
-                        row["collected_CNPJ"] = b
-
-                m_amt = FieldExtractor.match_expected_amount(text, answers.service_price)
-                if m_amt is not None:
-                    row["collected_service_price"] = _format_brl_from_cents(m_amt)
-                    used_answers_any = True
-                if not row["collected_service_price"]:
-                    cands = FieldExtractor.extract_price_candidates_cents(text)
-                    if cands and answers.service_price:
-                        clean_target = answers.service_price.replace(".", "").replace(",", "")
-                        for candidate in cands:
-                            str_candidate = str(candidate)
-                            formatted = _format_brl_from_cents(candidate)
-                            if clean_target and str_candidate in clean_target:
-                                row["collected_service_price"] = formatted
-                                break
-
-                row["collected_CNPJ2"] = FieldExtractor.extract_cnpj2_blind(text)
-
-                if row["collected_service_price"]:
-                    found_service_price_any = True
-
-            elif cls == "Peças":
-                m = FieldExtractor.match_expected_claim_no(text, answers.claim_no)
-                if m:
-                    row["collected_ClaimNO"] = m
-                    used_answers_any = True
-                if not row["collected_ClaimNO"]:
-                    b = FieldExtractor.extract_claim_no_blind(text)
-                    if b:
-                        row["collected_ClaimNO"] = b
-
-                m = FieldExtractor.match_expected_vin(text, answers.vin)
-                if m:
-                    row["collected_VIN"] = m
-                    used_answers_any = True
-                if not row["collected_VIN"]:
-                    b = FieldExtractor.extract_vin_blind(text)
-                    if b:
-                        row["collected_VIN"] = b
-
-                m = FieldExtractor.match_expected_cnpj(text, answers.cnpj)
-                if m:
-                    row["collected_CNPJ"] = m
-                    used_answers_any = True
-                if not row["collected_CNPJ"]:
-                    b = FieldExtractor.extract_cnpj_blind(text)
-                    if b:
-                        row["collected_CNPJ"] = b
-
-                m_amt = FieldExtractor.match_expected_amount(text, answers.parts_price)
-                if m_amt is not None:
-                    row["collected_parts_price"] = _format_brl_from_cents(m_amt)
-                    used_answers_any = True
-                if not row["collected_parts_price"]:
-                    cands = FieldExtractor.extract_price_candidates_cents(text)
-                    if cands and answers.parts_price:
-                        clean_target = answers.parts_price.replace(".", "").replace(",", "")
-                        for candidate in cands:
-                            str_candidate = str(candidate)
-                            formatted = _format_brl_from_cents(candidate)
-                            if clean_target and str_candidate in clean_target:
-                                row["collected_parts_price"] = formatted
-                                break
-
-                if row["collected_parts_price"]:
-                    found_parts_price_any = True
-
-            row["search_mode"] = "answers" if used_answers_any else "blind"
-            temp_rows[f] = row
-
-        for f in files:
-            if file_classes.get(f, "Outros") != "Outros":
-                continue
-            text = file_texts.get(f, "")
-            row = temp_rows.get(f)
-            if row is None:
-                row = {
-                    "file": str(f),
-                    "class": "Outros",
+                row: dict[str, Any] = {
+                    "file": str(f.name),
+                    "class": cls,
                     "collected_service_price": "",
                     "collected_parts_price": "",
                     "collected_CNPJ": "",
@@ -874,46 +814,168 @@ class RegexProcessingStrategy(BaseProcessingStrategy):
                     "search_mode": "blind",
                 }
 
-            used_answers_any = False
+                used_answers_any = False
 
-            if not found_service_price_any:
-                m_amt = FieldExtractor.match_expected_amount(text, answers.service_price)
-                if m_amt is not None:
-                    row["collected_service_price"] = _format_brl_from_cents(m_amt)
-                    used_answers_any = True
-                if not row["collected_service_price"]:
-                    cands = FieldExtractor.extract_price_candidates_cents(text)
-                    if cands:
-                        row["collected_service_price"] = "0,0"
+                if cls == "Serviço":
+                    m = FieldExtractor.match_expected_claim_no(text, answers["claim_no"])
+                    if m:
+                        row["collected_ClaimNO"] = m
+                        used_answers_any = True
+                    if not row["collected_ClaimNO"]:
+                        b = FieldExtractor.extract_claim_no_blind(text)
+                        if b:
+                            row["collected_ClaimNO"] = b
 
-            if not found_parts_price_any:
-                m_amt = FieldExtractor.match_expected_amount(text, answers.parts_price)
-                if m_amt is not None:
-                    row["collected_parts_price"] = _format_brl_from_cents(m_amt)
-                    used_answers_any = True
-                if not row["collected_parts_price"]:
-                    cands = FieldExtractor.extract_price_candidates_cents(text)
-                    if cands:
-                        row["collected_parts_price"] = "0,0"
+                    m = FieldExtractor.match_expected_vin(text, answers["vin"])
+                    if m:
+                        row["collected_VIN"] = m
+                        used_answers_any = True
+                    if not row["collected_VIN"]:
+                        b = FieldExtractor.extract_vin_blind(text)
+                        if b:
+                            row["collected_VIN"] = b
 
-            if used_answers_any:
-                row["search_mode"] = "answers"
+                    m = FieldExtractor.match_expected_cnpj(text, answers["cnpj"])
+                    if m:
+                        row["collected_CNPJ"] = m
+                        used_answers_any = True
+                    if not row["collected_CNPJ"]:
+                        b = FieldExtractor.extract_cnpj_blind(text)
+                        if b:
+                            row["collected_CNPJ"] = b
 
-            temp_rows[f] = row
+                    m_amt = FieldExtractor.match_expected_amount(text, answers["service_price"])
+                    if m_amt is not None:
+                        row["collected_service_price"] = _format_brl_from_cents(m_amt)
+                        used_answers_any = True
+                    if not row["collected_service_price"]:
+                        cands = FieldExtractor.extract_price_candidates_cents(text)
+                        if cands and answers["service_price"]:
+                            clean_target = str(answers["service_price"]).replace(".", "").replace(",", "")
+                            for candidate in cands:
+                                str_candidate = str(candidate)
+                                formatted = _format_brl_from_cents(candidate)
+                                if clean_target and str_candidate in clean_target:
+                                    row["collected_service_price"] = formatted
+                                    break
 
-        rows.extend(temp_rows[f] for f in files)
+                    row["collected_CNPJ2"] = FieldExtractor.extract_cnpj2_blind(text)
 
-        columns = [
-            "file",
-            "class",
-            "collected_service_price",
-            "collected_parts_price",
-            "collected_CNPJ",
-            "collected_CNPJ2",
-            "collected_VIN",
-            "collected_ClaimNO",
-            "search_mode",
-        ]
+                    if row["collected_service_price"]:
+                        found_service_price_any = True
+
+                elif cls == "Peças":
+                    m = FieldExtractor.match_expected_claim_no(text, answers["claim_no"])
+                    if m:
+                        row["collected_ClaimNO"] = m
+                        used_answers_any = True
+                    if not row["collected_ClaimNO"]:
+                        b = FieldExtractor.extract_claim_no_blind(text)
+                        if b:
+                            row["collected_ClaimNO"] = b
+
+                    m = FieldExtractor.match_expected_vin(text, answers["vin"])
+                    if m:
+                        row["collected_VIN"] = m
+                        used_answers_any = True
+                    if not row["collected_VIN"]:
+                        b = FieldExtractor.extract_vin_blind(text)
+                        if b:
+                            row["collected_VIN"] = b
+
+                    m = FieldExtractor.match_expected_cnpj(text, answers["cnpj"])
+                    if m:
+                        row["collected_CNPJ"] = m
+                        used_answers_any = True
+                    if not row["collected_CNPJ"]:
+                        b = FieldExtractor.extract_cnpj_blind(text)
+                        if b:
+                            row["collected_CNPJ"] = b
+
+                    m_amt = FieldExtractor.match_expected_amount(text, answers["parts_price"])
+                    if m_amt is not None:
+                        row["collected_parts_price"] = _format_brl_from_cents(m_amt)
+                        used_answers_any = True
+                    if not row["collected_parts_price"]:
+                        cands = FieldExtractor.extract_price_candidates_cents(text)
+                        if cands and answers["parts_price"]:
+                            clean_target = str(answers["parts_price"]).replace(".", "").replace(",", "")
+                            for candidate in cands:
+                                str_candidate = str(candidate)
+                                formatted = _format_brl_from_cents(candidate)
+                                if clean_target and str_candidate in clean_target:
+                                    row["collected_parts_price"] = formatted
+                                    break
+
+                    if row["collected_parts_price"]:
+                        found_parts_price_any = True
+
+                row["search_mode"] = "answers" if used_answers_any else "blind"
+                temp_rows[f] = row
+            for f in p.files:
+                file_texts = p.file_texts.get(f, "")
+                file_classes = p.file_classes.get(f, "")
+                answers = p.answers.get(f, "")
+
+                if file_classes != "Outros":
+                    continue
+                text = file_texts
+                row = temp_rows.get(f)
+                if row is None:
+                    row = {
+                        "file": str(f),
+                        "class": "Outros",
+                        "collected_service_price": "",
+                        "collected_parts_price": "",
+                        "collected_CNPJ": "",
+                        "collected_CNPJ2": "",
+                        "collected_VIN": "",
+                        "collected_ClaimNO": "",
+                        "search_mode": "blind",
+                    }
+
+                used_answers_any = False
+
+                if not found_service_price_any:
+                    m_amt = FieldExtractor.match_expected_amount(text, answers["service_price"])
+                    if m_amt is not None:
+                        row["collected_service_price"] = _format_brl_from_cents(m_amt)
+                        used_answers_any = True
+                    if not row["collected_service_price"]:
+                        cands = FieldExtractor.extract_price_candidates_cents(text)
+                        if cands:
+                            row["collected_service_price"] = "0,0"
+
+                if not found_parts_price_any:
+                    m_amt = FieldExtractor.match_expected_amount(text, answers.parts_price)
+                    if m_amt is not None:
+                        row["collected_parts_price"] = _format_brl_from_cents(m_amt)
+                        used_answers_any = True
+                    if not row["collected_parts_price"]:
+                        cands = FieldExtractor.extract_price_candidates_cents(text)
+                        if cands:
+                            row["collected_parts_price"] = "0,0"
+
+                if used_answers_any:
+                    row["search_mode"] = "answers"
+
+                temp_rows[f] = row
+
+            rows.extend(temp_rows[file] for file in p.files)
+
+            columns = [
+                "file",
+                "class",
+                "collected_service_price",
+                "collected_parts_price",
+                "collected_CNPJ",
+                "collected_CNPJ2",
+                "collected_VIN",
+                "collected_ClaimNO",
+                "search_mode",
+            ]
+            
+
         return pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(columns=columns)
 
     def _fallback_to_llm(self, file_path: str, extracted_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
 from .base_strategy import BaseProcessingStrategy
-from Ultra_Arena_Main.llm_client.llm_client_factory import LLMClientFactory
-from Ultra_Arena_Main.llm_metrics import TokenCounter
+from llm_client.llm_client_factory import LLMClientFactory
+from llm_metrics import TokenCounter
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

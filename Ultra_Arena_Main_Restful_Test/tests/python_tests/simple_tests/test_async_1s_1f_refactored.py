@@ -18,56 +18,30 @@ def main():
                 "subchains": [
                     {
                         "censor": True,
-                        "metadata_fields": {
-                            "field1": "value1",
-                            "field2": "value2"
-                        },
-                        "subchain_name": "subchain1_1",
-                        "fileNumberPerFile": 10,
+                        "metadata_fields": [
+                            "claim_id",
+                            "claim_no",
+                            "vin",
+                            "dealer_cnpj",
+                            "part_amount_dms",
+                            "labour_amount_dms"
+                        ],
+                        "subchain_name": "subchain_regex",
+                        "fileNumberPerFile": 1,
                         "pre-processing": {
-                            "pre-type": "text"
+                            "pre-type": "regex"
                         },
                         "processing": {
-                            "proc-type": "text_first",
-                            "llm_provider": "google",
-                            "llm_model": "gemini-2.5-flash"
+                            "proc-type": "regex",
                         },
                         "post-processing": {
-                            "post-type": "metadata",
+                            "post-type": "regex",
                             "retries": {
                                 "pre_retry": {
-                                    "retry_count": 2
+                                    "retry_count": 0
                                 },
                                 "proc_retry": {
-                                    "retry_count": 3
-                                }
-                            }
-                        }
-                    },
-                    {
-                        "censor": True,
-                        "metadata_fields": {
-                            "field1": "value1",
-                            "field2": "value2"
-                        },
-                        "subchain_name": "subchain1_1",
-                        "fileNumberPerFile": 10,
-                        "pre-processing": {
-                            "pre-type": "text"
-                        },
-                        "processing": {
-                            "proc-type": "text_first",
-                            "llm_provider": "google",
-                            "llm_model": "gemini-2.5-flash"
-                        },
-                        "post-processing": {
-                            "post-type": "metadata",
-                            "retries": {
-                                "pre_retry": {
-                                    "retry_count": 2
-                                },
-                                "proc_retry": {
-                                    "retry_count": 3
+                                    "retry_count": 0
                                 }
                             }
                         }
