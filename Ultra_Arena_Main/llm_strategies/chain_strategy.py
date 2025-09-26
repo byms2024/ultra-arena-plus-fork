@@ -162,7 +162,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         try:
             pre_strategy = PreProcessingLinkFactory.create_strategy(
                 pre_type, 
-                {**self.config, **pre_config}, 
+                {**self.config, **pre_config, 'censor' : censor}, 
                 streaming=self.streaming
             )
             # share passthrough with pre-processing link
@@ -182,6 +182,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["estimated_tokens"] += pre_stats.get("estimated_tokens", 0)
             agg_stats["total_tokens"] += pre_stats.get("total_tokens", 0)
             agg_stats["processing_time"] += pre_stats.get("processing_time", 0)
+
             # pre_results is a list of PreprocessedData, so we need to extract per-file results
             # Each PreprocessedData contains: files (list[Path]), file_texts, file_classes, answers
             
@@ -200,7 +201,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             # On pre-processing failure, mark all files as failed for this subchain
             for file_path in current_files:
                 subchain_results[file_path] = {"error": f"Pre-processing failed: {e}"}
-            return {}, current_files  # Return empty successful results, all files as failed
+            return {}, current_files  # Return empty successful results, all files as failed)
+
 
         # 2. Processing link
         processing_config = subchain_config["processing"]
@@ -208,14 +210,19 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         processing_type = processing_config.get("proc-type", processing_config.get("type"))
         
         logging.info(f"   ⚙️ Processing ({processing_type}) for subchain '{subchain_name}'")
-        
+
+        from config import config_base
+
+        user_prompt = config_base.SENSITIVE_USER_PROMPT if not censor else config_base.USER_PROMPT
+        system_prompt = config_base.SYSTEM_PROMPT      
+
         successful_files = []
         failed_files = []
         
         try:
             processing_strategy = ProcessingLinkFactory.create_strategy(
                 processing_type, 
-                {**self.config, **processing_config}, 
+                {**self.config, **processing_config, 'censor' : censor}, 
                 streaming=self.streaming
             )
             # share passthrough with processing link
