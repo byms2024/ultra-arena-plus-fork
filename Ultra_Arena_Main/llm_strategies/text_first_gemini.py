@@ -6,18 +6,36 @@ from pathlib import Path
 from collections import Counter
 import re
 
+from dataclasses import dataclass
 from common.text_extractor import TextExtractor
 from .base_strategy import BaseProcessingStrategy
-from .strategy_factory import ProcessingStrategyFactory
-from .strategy_factory import PreProcessingStrategyFactory
-from .strategy_factory import PostProcessingStrategyFactory
 from llm_client.llm_client_factory import LLMClientFactory
 from llm_metrics import TokenCounter
-from .chain_strategy import LinkStrategy
+from Ultra_Arena_Main.llm_strategies.strategy_factory import LinkStrategy
 
+@dataclass
+class Answers:
+    claim_no: Optional[str] = None
+    vin: Optional[str] = None
+    service_price: Optional[str] = None
+    parts_price: Optional[str] = None
+    cnpj: Optional[str] = None
+
+
+@dataclass
+class PreprocessedData:
+    files: list[Path]
+    file_texts: dict[Path, str]
+    file_classes: dict[Path, str]
+    answers: Answers
 
 class TextPreProcessingStrategy(LinkStrategy):
     """Pre-processing strategy for text-based operations."""
+    
+    def __init__(self, config: Dict[str, Any] | None = None, streaming: bool = False):
+        super().__init__(config, streaming)
+        self.config = config or {}
+        self.streaming = streaming
 
     def desensitize_content(self, text_content: str, file_Name: str) -> str:
         from .data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
@@ -121,48 +139,45 @@ class TextPreProcessingStrategy(LinkStrategy):
         original_filenames = []
         successful_files = []
         results = []
+
+        self.regex_criteria = self.config.get('text_first_regex_criteria')
+        desensitization_config = self.config.get('censor')
         
+        file_list = []
+        file_texts = {}
+
         for file_path in file_group:
             
+            file_list.append(Path(file_path))
+
             # Extract file content
             text_content = self.extract_text(file_path)
 
             # If extracted, checks if it desensitization is needed
             if text_content:
-                if self.desensitization_config:
+                if desensitization_config:
                     text_to_add = self.desensitize_content(text_content, Path(file_path).name)
                 else:
                     text_to_add = text_content
                 
-                # Store results
-                processed_texts.append(text_to_add)
-                original_filenames.append(Path(file_path).name)
-                successful_files.append(file_path)
-                result = {  "preprocessed": True,
-                            "preprocessing_type": "text",
-                            "preprocessing_result" : text_to_add}
-                results.append((file_path, result))
+                file_texts[Path(file_path)] = text_to_add
             
             # If extraction failed, store results
             else:
-                result = {  "preprocessed": False,
-                            "preprocessing_type": "text",
-                            "preprocessing_result":"No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}
-                results.append((file_path, result))
+                file_texts[Path(file_path)] = None
 
-        preprocessed_values = (result_dict.get('preprocessed') for _, result_dict in results)
-        counts = Counter(preprocessed_values)
+        results = [PreprocessedData(
+            files=file_list,
+            file_texts=file_texts,
+            answers= Answers(),
+            file_classes= {}
+        )]
 
-        agg_stats = {
-            "total_files": len(file_group),
-            "successful_files": counts.get(True, 0),
-            "failed_files": counts.get(False, 0),
-            "total_tokens": 0,
-            "estimated_tokens": 0,
-            "processing_time": int(time.time() - start_time)
-        }
+        agg_stats = {"total_files": len(file_group)}
+
+        info = ""
         
-        return results, agg_stats, group_id
+        return results, agg_stats, info
 
 class TextFirstProcessingStrategy(BaseProcessingStrategy):
     """Enhanced strategy for processing files with primary/secondary PDF extraction and regex validation."""
@@ -172,39 +187,30 @@ class TextFirstProcessingStrategy(BaseProcessingStrategy):
         self.streaming = streaming
         self.llm_provider = config.get("llm_provider", "ollama")
         self.llm_config = config.get("provider_configs", {}).get(self.llm_provider, {})
+
         self.llm_client = LLMClientFactory.create_client(self.llm_provider, self.llm_config, streaming=self.streaming)
         
         # Initialize token counter for accurate estimation
         self.token_counter = TokenCounter(self.llm_client, provider=self.llm_provider)
         
-        # Text extraction configuration
-        self.primary_extractor_lib = config.get("pdf_extractor_lib", "pymupdf")
-        self.secondary_extractor_lib = config.get("secondary_pdf_extractor_lib", "pytesseract")
-        self.regex_criteria = config.get("text_first_regex_criteria", {})
-        
-        # Initialize text extractors
-        self.primary_extractor = TextExtractor(self.primary_extractor_lib)
-        self.secondary_extractor = TextExtractor(self.secondary_extractor_lib)
-        
-        logging.info(f"🔧 Enhanced Text-First Strategy initialized:")
-        logging.info(f"   Primary extractor: {self.primary_extractor_lib}")
-        logging.info(f"   Secondary extractor: {self.secondary_extractor_lib}")
-        logging.info(f"   Regex criteria keys: {list(self.regex_criteria.keys())}")
+        logging.info(f"🔧 Text-First Strategy initialized:")
     
     def process_file_group(self, *, config_manager, file_group: List[str], group_index: int, 
                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str,
-                          pre_results: List = None) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
+                          pre_results: Any = None) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
         """Process files with enhanced text-first approach."""
-        
-        text_to_process = [result['preprocessing_result']
-                            for f_path, result in pre_results
-                            if result['preprocessed']]
-        
-        successful_files = [f_path
-                            for f_path, result in pre_results
-                            if result['preprocessed']]
-        
-        original_filenames = [Path(f_path).name for f_path in successful_files]
+
+        text_to_process = []
+        original_filenames = []
+        successful_files = []
+
+        for item in pre_results:
+            for f_path in item.file_texts:
+                text = item.file_texts[f_path]
+                if text is not None:
+                    text_to_process.append(text)
+                    original_filenames.append(f_path.name)
+                    successful_files.append(f_path)
 
         # Choose which prompt to use based on provider
         from config import config_base

@@ -23,8 +23,8 @@ class ProcessingStrategyFactory:
             from .direct_file_strategy import DirectFileProcessingStrategy
             return DirectFileProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "text_first":
-            from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
-            return EnhancedTextFirstProcessingStrategy(config, streaming=streaming)
+            from .text_first_gemini import TextPreProcessingStrategy
+            return TextPreProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "image_first":
             from .image_first_strategy import ImageFirstProcessingStrategy
             return ImageFirstProcessingStrategy(config, streaming=streaming)
@@ -59,6 +59,7 @@ class PreProcessingLinkFactory:
     def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False) -> BaseProcessingStrategy:
         """Create a pre-processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "text":
+            from .text_first_gemini import TextPreProcessingStrategy
             strategy = TextPreProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "image":
             strategy = ImagePreProcessingStrategy(config, streaming=streaming)
@@ -92,8 +93,8 @@ class ProcessingLinkFactory:
     def create_strategy(cls, strategy_type: str, config: Dict[str, Any], streaming: bool = False) -> BaseProcessingStrategy:
         """Create a processing strategy based on type and auto-attach passthrough if provided."""
         if strategy_type == "text_first":
-            from .enhanced_text_first_strategy import EnhancedTextFirstProcessingStrategy
-            strategy = EnhancedTextFirstProcessingStrategy(config, streaming=streaming)
+            from .text_first_gemini import TextFirstProcessingStrategy
+            strategy = TextFirstProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "image_first":
             from .image_first_strategy import ImageFirstProcessingStrategy
             strategy = ImageFirstProcessingStrategy(config, streaming=streaming)
