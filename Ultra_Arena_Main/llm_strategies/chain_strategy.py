@@ -117,17 +117,23 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 for file_path, result in successful_results.items():
                     if file_path not in per_file_result:
                         per_file_result[file_path] = result
-                
                 # Update remaining files for next subchain
                 remaining_files = failed_files
 
+
         # Any file not finalized after all subchains => failure
         for file_path in file_group:
-            if file_path not in per_file_result:
-                per_file_result[file_path] = {"error": "All chained subchains exhausted without success"}
+            file_name = Path(file_path).name
+            found = False
+            for k in per_file_result.keys():
+                if file_name in k:
+                    found = True
+                    break
+            if not found:
+                per_file_result[file_name] = {"error": "All chained subchains exhausted without success"}
                 logging.info(f"❌ Chain exhausted: {file_path}")
 
-        merged_results = [(fp, per_file_result[fp]) for fp in file_group]
+        merged_results = [(fp, per_file_result[Path(fp).name]) for fp in file_group]
         agg_stats["successful_files"] = sum(1 for _fp, res in merged_results if "error" not in res)
         agg_stats["failed_files"] = agg_stats["total_files"] - agg_stats["successful_files"]
         agg_stats["processing_time"] = max(agg_stats["processing_time"], int(time.time() - start_time))
@@ -185,15 +191,15 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             # pre_results is a list of PreprocessedData, so we need to extract per-file results
             # Each PreprocessedData contains: files (list[Path]), file_texts, file_classes, answers
             
-            for pre_data in pre_results:
-                for file_path in pre_data.files:
-                    subchain_results[str(file_path)] = {
-                        "pre_processing": {
-                            "file_text": pre_data.file_texts.get(file_path),
-                            "file_class": pre_data.file_classes.get(file_path),
-                            "answers": pre_data.answers,
-                        }
-                    }
+            # for pre_data in pre_results:
+            #     for file_path in pre_data.files:
+            #         subchain_results[str(file_path.name)] = {
+            #             "pre_processing": {
+            #                 "file_text": pre_data.file_texts.get(file_path),
+            #                 "file_class": pre_data.file_classes.get(file_path),
+            #                 "answers": pre_data.answers,
+            #             }
+            #         }
                 
         except Exception as e:
             logging.error(f"❌ Pre-processing failed for subchain '{subchain_name}': {e}")
@@ -232,8 +238,6 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 user_prompt=user_prompt,
                 pre_results = pre_results
             )
-            print("=================================processing_results================================")
-            print(processing_results)
 
             agg_stats["estimated_tokens"] += processing_stats.get("estimated_tokens", 0)
             agg_stats["total_tokens"] += processing_stats.get("total_tokens", 0)
@@ -241,11 +245,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             
             # Process results and check for success/failure
             for file_path, result in processing_results:
-                print("\n==================== DEBUG: PROCESSING RESULT ====================")
-                print(f"file_path: {file_path}")
-                print(f"result: {result}")
-                print(f"passthrough (before): {passthrough}")
-
+                
                 # Ensure subchain_results entry exists for this file_path
                 if file_path not in subchain_results:
                     subchain_results[file_path] = {}
@@ -264,38 +264,30 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
 
                 try:
                     files_list = passthrough.setdefault("files", [])
-                    print(f"files_list (after setdefault): {files_list}")
                     matched_entry = None
                     for entry in files_list:
-                        print(f"entry in files_list: {entry}")
-                        print(f"Comparing file_path: {file_path} with entry.get('file_path'): {entry.get('file_path')}")
                         if file_path == entry.get("file_path"):
                             matched_entry = entry
-                            print(f"Matched entry found: {matched_entry}")
                             break
                     if matched_entry is None:
                         matched_entry = {"file_path": file_path, "status": "Pending", "extracted_data": {}}
                         files_list.append(matched_entry)
                         print(f"No matched entry, created new: {matched_entry}")
                     matched_entry["processing_output"] = model_output
-                    print(f"Updated matched_entry with processing_output: {matched_entry}")
                 except Exception as e:
                     print(f"Exception in passthrough file cache: {e}")
                     # Non-fatal; continue normal flow
                     pass
 
-                print(f"subchain_results (before): {subchain_results}")
 
                 # If result is not a dict, wrap it for consistency
                 if not isinstance(result, dict):
                     result = {"file_model_output": result}
 
                 if "error" in result:
-                    print(f"Error found in result for file_path {file_path}: {result['error']}")
                     subchain_results[file_path]["processing"] = result
                     subchain_results[file_path]["error"] = result["error"]
                     failed_files.append(file_path)
-                    print(f"Appended to failed_files: {failed_files}")
                     logging.info(f"➡️ Processing failed for {file_path}: {result.get('error')}")
                 else:
                     # Check mandatory keys if enabled
@@ -304,23 +296,16 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         # Use the actual model output for key checking
                         ok, _missing = self.check_mandatory_keys(model_output, file_path, 
                                                                  getattr(self, "benchmark_comparator", None))
-                        print(f"Mandatory keys check: ok={ok}, missing={_missing}")
                         if not ok:
                             subchain_results[file_path]["processing"] = result
                             subchain_results[file_path]["error"] = "Missing mandatory keys after processing"
                             failed_files.append(file_path)
-                            print(f"Appended to failed_files (missing keys): {failed_files}")
                             logging.info(f"➡️ Processing missing keys for {file_path}")
                             continue
 
                     # Success
-                    print(f"Success for file_path {file_path}")
-                    print(f"result: {result}")
-                    print(f"subchain_results (before success): {subchain_results}")
                     subchain_results[file_path]["processing"] = result
                     successful_files.append(file_path)
-                    print(f"Appended to successful_files: {successful_files}")
-                    print(f"subchain_results (after success): {subchain_results}")
                     logging.info(f"✅ Processing succeeded for {file_path}")
                     
         except Exception as e:
@@ -395,7 +380,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             print(f"Successful file: {file_path}")
         
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
-        
+
         return successful_results, failed_files
 
 
