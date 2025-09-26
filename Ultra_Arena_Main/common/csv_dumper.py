@@ -51,11 +51,9 @@ class CSVResultDumper:
     
     def _check_mandatory_keys(self, result: Dict[str, Any]) -> Tuple[bool, List[str]]:
         """Check if all mandatory keys are present and non-empty."""
-        print("=========result===========\n")
-        print(result)
+
         result = resensitize_data(result)
-        print("=========Sensitized result===========\n")
-        print(result)
+
         if not result or not isinstance(result, dict):
             return False, MANDATORY_KEYS
         

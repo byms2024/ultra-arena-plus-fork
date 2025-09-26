@@ -1125,8 +1125,6 @@ def soft_resensitize_output(
 
 def resensitize_data(result: Dict[str, Any]) -> Dict[str, Any]:
     """Resensitize a dict by replacing placeholders using ReverseMapStore's map only."""
-    print("=========result===========\n")
-    print(result)
     
     try:
         reverse_map: dict[str, str] = ReverseMapStore().get_map()
@@ -1152,8 +1150,6 @@ def resensitize_data(result: Dict[str, Any]) -> Dict[str, Any]:
             return [_replace_in_obj(it) for it in obj]
         if isinstance(obj, dict):
             return {k: _replace_in_obj(v) for k, v in obj.items()}
-        print("=========result after===========\n")
-        print(obj)
         return obj
 
     try:

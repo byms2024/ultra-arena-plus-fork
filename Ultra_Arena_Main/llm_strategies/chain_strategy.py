@@ -184,6 +184,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["processing_time"] += pre_stats.get("processing_time", 0)
             # pre_results is a list of PreprocessedData, so we need to extract per-file results
             # Each PreprocessedData contains: files (list[Path]), file_texts, file_classes, answers
+            
             for pre_data in pre_results:
                 for file_path in pre_data.files:
                     subchain_results[str(file_path)] = {
@@ -240,52 +241,86 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             
             # Process results and check for success/failure
             for file_path, result in processing_results:
+                print("\n==================== DEBUG: PROCESSING RESULT ====================")
+                print(f"file_path: {file_path}")
+                print(f"result: {result}")
+                print(f"passthrough (before): {passthrough}")
+
+                # Ensure subchain_results entry exists for this file_path
+                if file_path not in subchain_results:
+                    subchain_results[file_path] = {}
+
                 # Cache model output into passthrough for post-processing comparisons
                 try:
-                    print("=================================result================================")
-                    print(result)
-                    model_output = result.get("file_model_output", result)
-                    print("=================================model_output================================")
-                    print(model_output)
-                except AttributeError:
+                    # If result is a dict, use it directly; otherwise, wrap in dict
+                    if isinstance(result, dict):
+                        model_output = result.get("file_model_output", result)
+                    else:
+                        model_output = result
+                    print(f"model_output (from result): {model_output}")
+                except Exception as e:
+                    print(f"Exception when getting model_output: {e}")
                     model_output = result
+
                 try:
                     files_list = passthrough.setdefault("files", [])
-                    print("=================================files_list================================")
-                    print(files_list)
+                    print(f"files_list (after setdefault): {files_list}")
                     matched_entry = None
                     for entry in files_list:
-                        if entry.get("file_path") == file_path:
+                        print(f"entry in files_list: {entry}")
+                        print(f"Comparing file_path: {file_path} with entry.get('file_path'): {entry.get('file_path')}")
+                        if file_path == entry.get("file_path"):
                             matched_entry = entry
+                            print(f"Matched entry found: {matched_entry}")
                             break
                     if matched_entry is None:
                         matched_entry = {"file_path": file_path, "status": "Pending", "extracted_data": {}}
                         files_list.append(matched_entry)
+                        print(f"No matched entry, created new: {matched_entry}")
                     matched_entry["processing_output"] = model_output
-                except Exception:
+                    print(f"Updated matched_entry with processing_output: {matched_entry}")
+                except Exception as e:
+                    print(f"Exception in passthrough file cache: {e}")
                     # Non-fatal; continue normal flow
                     pass
+
+                print(f"subchain_results (before): {subchain_results}")
+
+                # If result is not a dict, wrap it for consistency
+                if not isinstance(result, dict):
+                    result = {"file_model_output": result}
+
                 if "error" in result:
+                    print(f"Error found in result for file_path {file_path}: {result['error']}")
                     subchain_results[file_path]["processing"] = result
                     subchain_results[file_path]["error"] = result["error"]
                     failed_files.append(file_path)
+                    print(f"Appended to failed_files: {failed_files}")
                     logging.info(f"➡️ Processing failed for {file_path}: {result.get('error')}")
                 else:
                     # Check mandatory keys if enabled
                     if self.chain_on_missing_keys:
-                        model_output = result.get("file_model_output", result)
+                        print(f"Checking mandatory keys for file_path {file_path}")
+                        # Use the actual model output for key checking
                         ok, _missing = self.check_mandatory_keys(model_output, file_path, 
-                                                               getattr(self, "benchmark_comparator", None))
+                                                                 getattr(self, "benchmark_comparator", None))
+                        print(f"Mandatory keys check: ok={ok}, missing={_missing}")
                         if not ok:
                             subchain_results[file_path]["processing"] = result
                             subchain_results[file_path]["error"] = "Missing mandatory keys after processing"
                             failed_files.append(file_path)
+                            print(f"Appended to failed_files (missing keys): {failed_files}")
                             logging.info(f"➡️ Processing missing keys for {file_path}")
                             continue
-                    
+
                     # Success
+                    print(f"Success for file_path {file_path}")
+                    print(f"result: {result}")
+                    print(f"subchain_results (before success): {subchain_results}")
                     subchain_results[file_path]["processing"] = result
                     successful_files.append(file_path)
+                    print(f"Appended to successful_files: {successful_files}")
+                    print(f"subchain_results (after success): {subchain_results}")
                     logging.info(f"✅ Processing succeeded for {file_path}")
                     
         except Exception as e:
@@ -346,9 +381,18 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         
         # Separate successful and failed results
         successful_results = {}
+        print("---- DEBUG: subchain_results ----")
         for file_path, results in subchain_results.items():
+            print(f"File: {file_path}")
+            print(f"Results: {results}")
             if "error" not in results:
+                print(f"File '{file_path}' is successful, adding to successful_results.")
                 successful_results[file_path] = results
+            else:
+                print(f"File '{file_path}' has error: {results.get('error')}")
+        print(f"---- DEBUG: successful_results ({len(successful_results)}) ----")
+        for file_path in successful_results:
+            print(f"Successful file: {file_path}")
         
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
         
