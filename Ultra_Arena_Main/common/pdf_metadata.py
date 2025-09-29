@@ -20,6 +20,8 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
     document_info: Dict[str, Any] = {}
     dms_data: Dict[str, Any] = {}
 
+    logging.info(f"Reading PDF metadata from {pdf_path}")
+
     try:
         try:
             from PyPDF2 import PdfReader  # type: ignore
@@ -34,6 +36,7 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
             info = getattr(reader, "getDocumentInfo", lambda: None)()
 
         if info:
+            logging.info(f"PDF metadata: {info}")
             # info can be a dict-like object; iterate and stringify
             try:
                 iterable = info.items()

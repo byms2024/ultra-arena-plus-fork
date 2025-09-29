@@ -11,7 +11,7 @@ from common.text_extractor import TextExtractor
 from .base_strategy import BaseProcessingStrategy
 from llm_client.llm_client_factory import LLMClientFactory
 from llm_metrics import TokenCounter
-from Ultra_Arena_Main.llm_strategies.strategy_factory import LinkStrategy
+from .strategy_factory import LinkStrategy
 
 @dataclass
 class Answers:
@@ -179,12 +179,12 @@ class TextPreProcessingStrategy(LinkStrategy):
         
         return results, agg_stats, info
 
-class TextFirstProcessingStrategy(BaseProcessingStrategy):
+class TextFirstProcessingStrategy(LinkStrategy):
     """Enhanced strategy for processing files with primary/secondary PDF extraction and regex validation."""
     
     def __init__(self, config: Dict[str, Any], streaming: bool = False, database_ops = None):
-        super().__init__(config)
-        self.streaming = streaming
+        super().__init__(config, streaming)
+        self.database_ops = database_ops
         self.llm_provider = config.get("llm_provider", "ollama")
         self.llm_config = config.get("provider_configs", {}).get(self.llm_provider, {})
 
@@ -244,6 +244,13 @@ class TextFirstProcessingStrategy(BaseProcessingStrategy):
             original_filenames=original_filenames
         )
         
+        # Log passthrough state before processing
+        if self.passthrough:
+            import json
+            files_list = self.passthrough.get("files", [])
+            before_summary = [{"file": f.get("file_path"), "status": f.get("status")} for f in files_list]
+            logging.info(f"🔎 TextFirst passthrough before processing: {json.dumps(before_summary, ensure_ascii=False)}")
+
         # Call LLM with enhanced prompt containing text content
         response = self._retry_with_backoff(
             self.llm_client.call_llm, files=None, system_prompt=system_prompt, user_prompt=enhanced_user_prompt
@@ -289,16 +296,25 @@ class TextFirstProcessingStrategy(BaseProcessingStrategy):
             group_index=group_index
         )
         
-        # Convert to the expected format
+        # Convert to the expected format and update passthrough
         for file_path, result in mapped_results:
+            # file_path is already a string filename from the mapping strategy
             if "error" not in result:
-                results.append((file_path.name, result))
+                results.append((file_path, result))
                 successful_count += 1
                 if "total_token_count" in result:
                     total_tokens += result["total_token_count"]
+                # Update passthrough with successful processing result
+                self.update_status(file_path, "Completed")
+                # Store processing output in passthrough for potential post-processing use
+                if self.passthrough:
+                    entry = self._get_or_create_file_entry(file_path)
+                    entry["processing_output"] = result
             else:
-                results.append((file_path.name, result))
+                results.append((file_path, result))
                 failed_count += 1
+                # Update passthrough with failed status
+                self.update_status(file_path, "Failed")
         
         group_stats = {
             "total_files": len(successful_files),
@@ -307,7 +323,13 @@ class TextFirstProcessingStrategy(BaseProcessingStrategy):
             "total_tokens": total_tokens,
             "estimated_tokens": 0
         }
-        
+
+        # Log passthrough state after processing
+        if self.passthrough:
+            files_list = self.passthrough.get("files", [])
+            after_summary = [{"file": f.get("file_path"), "status": f.get("status")} for f in files_list]
+            logging.info(f"🔎 TextFirst passthrough after processing: {json.dumps(after_summary, ensure_ascii=False)}")
+
         return results, group_stats
     
     def _create_enhanced_prompt_with_text_content(self, *, user_prompt: str, text_contents: List[str], 

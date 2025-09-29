@@ -588,18 +588,12 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                                 issues.append("labour_amount_dms")
 
                         if issues:
-                            # Unmatched: record details and null-out problematic fields in extracted_data
+                            # Unmatched: record details but don't modify extracted_data
                             entry["status"] = "Unmatched"
                             entry["unmatch_detail"] = issues
-                            final_fields = dict(proc_fields)
-                            for k in issues:
-                                # issues use extracted_data key names (claim_no, vin, cnpj)
-                                final_fields[k] = None
-                            entry["extracted_data"] = final_fields
                         else:
-                            # Matched: extracted_data is the processing result
+                            # Matched: just update status, preserve DMS data in extracted_data
                             entry["status"] = "Matched"
-                            entry["extracted_data"] = proc_fields
                         break
             except Exception:
                 # Non-fatal; continue

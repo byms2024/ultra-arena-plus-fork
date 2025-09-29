@@ -29,7 +29,8 @@ def main():
                         "subchain_name": "subchain_regex",
                         "fileNumberPerFile": 1,
                         "pre-processing": {
-                            "pre-type": "regex"
+                            "pre-type": "regex",
+                            "enable_pdf_metadata": True
                         },
                         "processing": {
                             "proc-type": "regex",
@@ -59,7 +60,8 @@ def main():
                         "subchain_name": "subchain_text",
                         "fileNumberPerFile": 1,
                         "pre-processing": {
-                            "pre-type": "text"
+                            "pre-type": "text",
+                            "enable_pdf_metadata": True
                         },
                         "processing": {
                             "proc-type": "text_first",

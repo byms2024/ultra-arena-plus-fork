@@ -219,19 +219,22 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     remaining_files = failed_files
 
 
+
         # Any file not finalized after all subchains => failure
         for file_path in file_group:
             file_name = Path(file_path).name
-            found = False
-            for k in per_file_result.keys():
-                if file_name in k:
-                    found = True
-                    break
-            if not found:
-                per_file_result[file_name] = {"error": "All chained subchains exhausted without success"}
+            if file_path not in per_file_result:
+                result = {"error": "All chained subchains exhausted without success"}
+                per_file_result[file_path] = result
                 logging.info(f"❌ Chain exhausted: {file_path}")
 
-        merged_results = [(fp, per_file_result[Path(fp).name]) for fp in file_group]
+        # Convert file_path keys to file_name keys for final output
+        final_results = {}
+        for file_path, result in per_file_result.items():
+            file_name = Path(file_path).name
+            final_results[file_name] = result
+
+        merged_results = [(fp, final_results[Path(fp).name]) for fp in file_group]
         agg_stats["successful_files"] = sum(1 for _fp, res in merged_results if "error" not in res)
         agg_stats["failed_files"] = agg_stats["total_files"] - agg_stats["successful_files"]
         agg_stats["processing_time"] = max(agg_stats["processing_time"], int(time.time() - start_time))
