@@ -644,6 +644,8 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "dms_file_id": dms.get("file_id"),
                     "dms_embedded_at": dms.get("embedded_at"),
                 }
+                # Store DMS data in passthrough for visibility in logs
+                self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
                 # Store as a dict, not as an Answers object
                 answers[Path(file_path).expanduser().resolve()] = {
                     "claim_no": mapped.get("claim_no"),
@@ -652,7 +654,6 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "parts_price": mapped.get("part_amount_dms"),
                     "cnpj": mapped.get("cnpj1"),
                 }
-                self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
             # Optionally keep raw document info
             if self.config.get("store_raw_pdf_info", False):
                 self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
