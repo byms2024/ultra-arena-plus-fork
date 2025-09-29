@@ -26,13 +26,13 @@ def main():
                             "part_amount_dms",
                             "labour_amount_dms"
                         ],
-                        "subchain_name": "subchain_text",
+                        "subchain_name": "subchain_regex",
                         "fileNumberPerFile": 1,
                         "pre-processing": {
-                            "pre-type": "text"
+                            "pre-type": "regex"
                         },
                         "processing": {
-                            "proc-type": "text_first",
+                            "proc-type": "regex",
                         },
                         "post-processing": {
                             "post-type": "metadata",
@@ -56,13 +56,13 @@ def main():
                             "part_amount_dms",
                             "labour_amount_dms"
                         ],
-                        "subchain_name": "subchain_regex",
+                        "subchain_name": "subchain_text",
                         "fileNumberPerFile": 1,
                         "pre-processing": {
-                            "pre-type": "regex"
+                            "pre-type": "text"
                         },
                         "processing": {
-                            "proc-type": "regex",
+                            "proc-type": "text_first",
                         },
                         "post-processing": {
                             "post-type": "metadata",

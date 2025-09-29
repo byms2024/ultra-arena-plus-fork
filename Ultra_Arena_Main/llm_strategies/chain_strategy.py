@@ -324,6 +324,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     extra_kwargs["pre_results"] = pre_results
             except Exception:
                 pass
+
             processing_results, processing_stats, _ = processing_strategy.process_file_group(
                 config_manager=config_manager,
                 file_group=current_files,
@@ -338,9 +339,13 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["total_tokens"] += processing_stats.get("total_tokens", 0)
             agg_stats["processing_time"] += processing_stats.get("processing_time", 0)
             
+            print('🚍'*100)
             # Process results and check for success/failure
             for file_path, result in processing_results:
                 
+                print(file_path)
+                print(result)
+
                 # Ensure subchain_results entry exists for this file_path
                 if file_path not in subchain_results:
                     subchain_results[file_path] = {}
@@ -388,13 +393,24 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             "service_value": None,
                         }
                         if isinstance(model_output, dict):
-                            normalized["type"] = model_output.get("class")
-                            normalized["claim_no"] = model_output.get("collected_ClaimNO")
-                            normalized["vin"] = model_output.get("collected_VIN")
-                            normalized["cnpj"] = model_output.get("collected_CNPJ")
-                            normalized["cnpj2"] = model_output.get("collected_CNPJ2")
-                            normalized["parts_value"] = model_output.get("collected_parts_price")
-                            normalized["service_value"] = model_output.get("collected_service_price")
+                            # Helper to pick from multiple possible keys
+                            def pick(obj, keys):
+                                for k in keys:
+                                    if k in obj:
+                                        return obj[k]
+                                    if k.upper() in obj:
+                                        return obj[k.upper()]
+                                    if k.lower() in obj:
+                                        return obj[k.lower()]
+                                return None
+
+                            normalized["type"] = pick(model_output, ["class", "type", "document_type", "DOC_TYPE"])
+                            normalized["claim_no"] = pick(model_output, ["collected_ClaimNO", "claim_no", "CLAIM_NO"])
+                            normalized["vin"] = pick(model_output, ["collected_VIN", "vin", "VIN"])
+                            normalized["cnpj"] = pick(model_output, ["collected_CNPJ", "cnpj", "CNPJ"])
+                            normalized["cnpj2"] = pick(model_output, ["collected_CNPJ2", "cnpj2", "CNPJ2"])
+                            normalized["parts_value"] = pick(model_output, ["collected_parts_price", "parts_value", "PARTS_VALUE", "part_amount"])
+                            normalized["service_value"] = pick(model_output, ["collected_service_price", "service_value", "SERVICE_VALUE", "labour_amount"])
                         matched_entry["processing_extracted_data"] = normalized
                     except Exception:
                         pass
@@ -511,6 +527,9 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             else:
                 logging.info(f"File '{file_path}' has error: {results.get('error')}")
         
+        for file_path in successful_results:
+            print(f"Successful file: {file_path}")
+
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
         self._log_passthrough(f"end_subchain:{subchain_name}", passthrough)
         

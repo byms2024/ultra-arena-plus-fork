@@ -540,6 +540,7 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                                 if _P(str(entry.get("file_path"))).name == _P(str(file_path)).name:
                                     proc_raw = entry.get("processing_output", {}) or {}
                                     dms = entry.get("extracted_data", {}) or {}
+                                    proc_norm = entry.get("processing_extracted_data", {}) or {}
                                     matched = True
                             except Exception:
                                 matched = False
@@ -594,7 +595,6 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             entry["status"] = "Matched"
                             entry["extracted_data"] = proc_fields
                         break
-
             except Exception:
                 # Non-fatal; continue
                 pass
