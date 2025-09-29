@@ -77,6 +77,11 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     "file": entry.get("file_path"),
                     "status": entry.get("status"),
                 }
+
+                # Add blacklist information if present
+                blacklisted = entry.get("blacklisted", {})
+                if blacklisted:
+                    item["blacklisted"] = blacklisted
                 extracted = entry.get("extracted_data", {}) or {}
                 if isinstance(extracted, dict):
                     for k in [
@@ -186,10 +191,12 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     self.passthrough,
                 )
                 
-                # Store successful results
+                # Store successful results and update status to Processed
                 for file_path, result in successful_results.items():
                     if file_path not in per_file_result:
                         per_file_result[file_path] = result
+                        # Update passthrough status to Processed for successfully processed files
+                        self._update_file_status(file_path, "Processed")
                 # Update remaining files for next subchain
                 remaining_files = failed_files
 
@@ -201,7 +208,14 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             if file_path not in per_file_result:
                 result = {"error": "All chained subchains exhausted without success"}
                 per_file_result[file_path] = result
+                # Files that never got processed remain Pending
+                self._update_file_status(file_path, "Pending")
                 logging.info(f"❌ Chain exhausted: {file_path}")
+            else:
+                # Files that completed processing should be marked as Completed
+                if "error" not in per_file_result[file_path]:
+                    self._update_file_status(file_path, "Completed")
+                # Files with errors remain in their current status
 
         # Convert file_path keys to file_name keys for final output
         final_results = {}
@@ -215,6 +229,17 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         agg_stats["processing_time"] = max(agg_stats["processing_time"], int(time.time() - start_time))
 
         return merged_results, agg_stats, group_id
+
+    def _update_file_status(self, file_path: str, status: str) -> None:
+        """Update the status of a file in the passthrough."""
+        if self.passthrough is None:
+            return
+        # Find the file entry in passthrough
+        for entry in self.passthrough.get("files", []):
+            if entry.get("file_path") == file_path:
+                entry["status"] = status
+                logging.debug(f"📊 Updated status for {file_path}: {status}")
+                break
 
     def _execute_subchain(self, subchain_name: str, subchain_config: Dict[str, Any], 
                          file_group: List[str], config_manager, group_index: int, group_id: str,
