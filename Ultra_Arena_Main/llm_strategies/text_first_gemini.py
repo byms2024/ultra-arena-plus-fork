@@ -149,6 +149,15 @@ class TextPreProcessingStrategy(LinkStrategy):
 
         for file_path in file_group:
             # Optionally read and store PDF metadata (including DMS) into passthrough
+            
+            file_list.append(str(Path(file_path).absolute()))
+            # Check if file is blacklisted for text preprocessing
+            if self.is_file_blacklisted(file_path, "text_preprocessing"):
+                logging.warning(f"🚫⚠️  SKIPPING BECAUSE BLACKLISTED: {file_path} - Previously failed text extraction")
+                file_list.append(Path(file_path))
+                file_texts[Path(file_path)] = None
+                continue
+
             try:
                 if self.config.get("enable_pdf_metadata", False):
                     from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
@@ -174,14 +183,21 @@ class TextPreProcessingStrategy(LinkStrategy):
             except Exception:
                 # Non-fatal: proceed with preprocessing even if metadata extraction fails
                 pass
-            
-            file_list.append(str(Path(file_path).absolute()))
 
             # Extract file content
-            text_content = self.extract_text(file_path)
+            try:
+                # FORCE BLACKLISTING FOR TESTING: Always fail text extraction
+                text_content = self.extract_text(file_path)
+                # raise Exception("FORCED BLACKLISTING: Simulating text extraction failure")
 
-            # If extracted, checks if it desensitization is needed
-            if text_content:
+                # Check if text extraction failed or returned insufficient content
+                if not text_content or len(text_content.strip()) < 50:  # Consider text too short
+                    self.blacklist_file(file_path, "Text extraction failed or returned insufficient content", "text_preprocessing")
+                    logging.warning(f"🚫 Blacklisting {file_path} due to poor text extraction quality")
+                    file_texts[Path(file_path)] = None
+                    continue
+
+                # If extracted, checks if desensitization is needed
                 if desensitization_config:
                     text_to_add = self.desensitize_content(text_content, Path(file_path).name)
                 else:
@@ -189,9 +205,12 @@ class TextPreProcessingStrategy(LinkStrategy):
                 
                 file_texts[str(Path(file_path).absolute())] = text_to_add
             
-            # If extraction failed, store results
-            else:
+            except Exception as e:
+                # Text extraction threw an exception - blacklist the file
+                self.blacklist_file(str(Path(file_path).absolute()), f"Text extraction error: {str(e)}", "text_preprocessing")
+                logging.error(f"🚫 Blacklisting {str(Path(file_path).absolute())} due to text extraction exception: {e}")
                 file_texts[str(Path(file_path).absolute())] = None
+                continue
 
         results = [PreprocessedData(
             files=file_list,
@@ -272,11 +291,14 @@ class TextFirstProcessingStrategy(LinkStrategy):
         )
         
         # Log passthrough state before processing
+        logging.info(f"🔎 TextFirst passthrough object exists: {self.passthrough is not None}")
         if self.passthrough:
             import json
             files_list = self.passthrough.get("files", [])
             before_summary = [{"file": f.get("file_path"), "status": f.get("status")} for f in files_list]
             logging.info(f"🔎 TextFirst passthrough before processing: {json.dumps(before_summary, ensure_ascii=False)}")
+        else:
+            logging.warning("🔎 TextFirst passthrough is None!")
 
         # Call LLM with enhanced prompt containing text content
         response = self._retry_with_backoff(

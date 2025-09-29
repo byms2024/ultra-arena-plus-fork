@@ -153,6 +153,7 @@ class LinkStrategy(BaseProcessingStrategy):
     def attach_passthrough(self, passthrough: Dict[str, Any]) -> None:
         """Attach shared passthrough object so links can read/update file statuses and extracted data."""
         self.passthrough = passthrough
+        logging.info(f"🔗 Attached passthrough to {self.__class__.__name__}: {len(passthrough.get('files', []))} files")
 
     # --- Extension hooks for future status management/blacklisting ---
     def _get_or_create_file_entry(self, file_path: str) -> Dict[str, Any]:
@@ -180,6 +181,34 @@ class LinkStrategy(BaseProcessingStrategy):
         entry = self._get_or_create_file_entry(file_path)
         data = entry.setdefault("extracted_data", {})
         data.update(updates)
+
+    def blacklist_file(self, file_path: str, reason: str, processing_type: str) -> None:
+        """Mark a file as blacklisted for a specific processing type."""
+        if self.passthrough is None:
+            return
+        entry = self._get_or_create_file_entry(file_path)
+        blacklisted = entry.setdefault("blacklisted", {})
+        blacklisted[processing_type] = {
+            "reason": reason,
+            "timestamp": time.time()
+        }
+        logging.warning(f"🚫⚠️  BLACKLISTING FILE: {file_path} for {processing_type} - {reason}")
+
+    def is_file_blacklisted(self, file_path: str, processing_type: str) -> bool:
+        """Check if a file is blacklisted for a specific processing type."""
+        if self.passthrough is None:
+            return False
+        entry = self._get_or_create_file_entry(file_path)
+        blacklisted = entry.get("blacklisted", {})
+        return processing_type in blacklisted
+
+    def update_file_status(self, file_path: str, status: str) -> None:
+        """Update the status of a file in the passthrough."""
+        if self.passthrough is None:
+            return
+        entry = self._get_or_create_file_entry(file_path)
+        entry["status"] = status
+        logging.debug(f"📊 Updated status for {file_path}: {status}")
 
 # Pre-processing strategies
 class TextPreProcessingStrategy(LinkStrategy):
@@ -597,6 +626,13 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                         else:
                             # Matched: just update status, preserve DMS data in extracted_data
                             entry["status"] = "Matched"
+                            if "unmatch_detail" in entry:
+                                del entry["unmatch_detail"]
+                            # Also remove from self.passthrough if present
+                            if hasattr(self, "passthrough") and isinstance(self.passthrough, dict):
+                                passthrough_entry = self.passthrough.get(file_path)
+                                if passthrough_entry and isinstance(passthrough_entry, dict) and "unmatch_detail" in passthrough_entry:
+                                    del passthrough_entry["unmatch_detail"]
                         break
             except Exception:
                 # Non-fatal; continue

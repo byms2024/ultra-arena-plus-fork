@@ -630,9 +630,23 @@ class RegexPreProcessingStrategy(LinkStrategy):
         file_texts: dict[Path, str] = {}
         file_classes: dict[Path, str] = {}
         for f in files:
-            t = PdfTextExtractor.extract_text_best_effort(f)
-            file_texts[f] = t
-            file_classes[f] = PdfClassifier.classify_pdf(t)
+            try:
+                # FORCE BLACKLISTING FOR TESTING: Always fail text extraction
+                t = PdfTextExtractor.extract_text_best_effort(f)
+                # raise Exception("FORCED BLACKLISTING: Simulating text extraction failure")
+
+                # Check if text extraction failed or returned empty/invalid text
+                if not t or len(t.strip()) < 10:  # Consider text too short to be useful
+                    self.blacklist_file(str(f), "Text extraction failed or returned insufficient content", "regex_preprocessing")
+                    logging.warning(f"🚫 Blacklisting {f} due to poor text extraction quality")
+                    continue
+                file_texts[f] = t
+                file_classes[f] = PdfClassifier.classify_pdf(t)
+            except Exception as e:
+                # Text extraction threw an exception - blacklist the file
+                self.blacklist_file(str(f), f"Text extraction error: {str(e)}", "regex_preprocessing")
+                logging.error(f"🚫 Blacklisting {f} due to text extraction exception: {e}")
+                continue
 
         return PreprocessedData(
             files=files,
@@ -646,6 +660,11 @@ class RegexPreProcessingStrategy(LinkStrategy):
         answers: dict[str, dict] = {}
 
         for file_path in file_group:
+            # Check if file is blacklisted for regex processing
+            if self.is_file_blacklisted(file_path, "regex_preprocessing"):
+                logging.warning(f"🚫⚠️  SKIPPING BECAUSE BLACKLISTED: {file_path} - Previously failed regex text extraction")
+                continue
+
             meta = read_pdf_metadata_dict(file_path)
             # Push parsed DMS data into passthrough extracted_data
             dms = meta.get("dms_data") or {}
