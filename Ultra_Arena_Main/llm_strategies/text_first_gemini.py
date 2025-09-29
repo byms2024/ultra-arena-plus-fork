@@ -227,15 +227,9 @@ class TextFirstProcessingStrategy(BaseProcessingStrategy):
             system_prompt=system_prompt,
             user_prompt=prompt_to_use
         )
-        
-        # Add error results for failed files
-        failed_files = [f for f in file_group if f not in successful_files]
-        for file_path in failed_files:
-            results.append((file_path, {"error": "No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}))
-            group_stats["failed_files"] += 1
-        
+    
         logging.info(f"✅ Completed text-first processing for group {group_index}: {group_stats['successful_files']} successful, {group_stats['failed_files']} failed")
-        
+
         return results, group_stats, group_id
     
     def _process_text_contents_directly(self, *, text_contents: List[str], original_filenames: List[str], 
@@ -298,12 +292,12 @@ class TextFirstProcessingStrategy(BaseProcessingStrategy):
         # Convert to the expected format
         for file_path, result in mapped_results:
             if "error" not in result:
-                results.append((file_path, result))
+                results.append((file_path.name, result))
                 successful_count += 1
                 if "total_token_count" in result:
                     total_tokens += result["total_token_count"]
             else:
-                results.append((file_path, result))
+                results.append((file_path.name, result))
                 failed_count += 1
         
         group_stats = {

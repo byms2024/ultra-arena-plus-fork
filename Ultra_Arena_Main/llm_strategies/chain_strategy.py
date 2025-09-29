@@ -324,6 +324,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     extra_kwargs["pre_results"] = pre_results
             except Exception:
                 pass
+
             processing_results, processing_stats, _ = processing_strategy.process_file_group(
                 config_manager=config_manager,
                 file_group=current_files,
@@ -338,9 +339,13 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["total_tokens"] += processing_stats.get("total_tokens", 0)
             agg_stats["processing_time"] += processing_stats.get("processing_time", 0)
             
+            print('🚍'*100)
             # Process results and check for success/failure
             for file_path, result in processing_results:
                 
+                print(file_path)
+                print(result)
+
                 # Ensure subchain_results entry exists for this file_path
                 if file_path not in subchain_results:
                     subchain_results[file_path] = {}
@@ -505,16 +510,16 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         
         # Separate successful and failed results
         successful_results = {}
-        print("---- DEBUG: subchain_results ----")
+        #print("---- DEBUG: subchain_results ----")
         for file_path, results in subchain_results.items():
-            print(f"File: {file_path}")
-            print(f"Results: {results}")
+            #print(f"File: {file_path}")
+            #print(f"Results: {results}")
             if "error" not in results:
-                print(f"File '{file_path}' is successful, adding to successful_results.")
+                #print(f"File '{file_path}' is successful, adding to successful_results.")
                 successful_results[file_path] = results
             else:
                 print(f"File '{file_path}' has error: {results.get('error')}")
-        print(f"---- DEBUG: successful_results ({len(successful_results)}) ----")
+        #print(f"---- DEBUG: successful_results ({len(successful_results)}) ----")
         for file_path in successful_results:
             print(f"Successful file: {file_path}")
         
