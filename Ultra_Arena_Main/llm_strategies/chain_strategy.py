@@ -234,12 +234,41 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             file_name = Path(file_path).name
             final_results[file_name] = result
 
-        merged_results = [(fp, final_results[Path(fp).name]) for fp in file_group]
+        merged_results = [(fp, self.passthrough.get("files", [])) for fp in file_group]
         agg_stats["successful_files"] = sum(1 for _fp, res in merged_results if "error" not in res)
         agg_stats["failed_files"] = agg_stats["total_files"] - agg_stats["successful_files"]
         agg_stats["processing_time"] = max(agg_stats["processing_time"], int(time.time() - start_time))
 
-        return merged_results, agg_stats, group_id
+        # INSERT_YOUR_CODE
+        # Transform self.passthrough to [(file_name, result)] format, including unmatch_detail if present
+        passthrough_results = []
+        passthrough_files = self.passthrough.get("files", [])
+        for entry in passthrough_files:
+            file_path = entry.get("file_path") or entry.get("file")
+            if not file_path:
+                continue
+            file_name = Path(file_path).name
+            result = {}
+            # Add processing_output if present
+            if "processing_output" in entry and entry["processing_output"] is not None:
+                result["processing"] = entry["processing_output"]
+            # Add post_processing if present (simulate post-processing result)
+            if "postprocessing_output" in entry and entry["postprocessing_output"] is not None:
+                result["post_processing"] = entry["postprocessing_output"]
+            elif "extracted_data" in entry and entry["extracted_data"] is not None:
+                result["post_processing"] = {
+                    "postprocessed": True,
+                    "postprocessing_type": "metadata",
+                    "metadata": entry["extracted_data"]
+                }
+            # Add unmatch_detail if present
+            if "unmatch_detail" in entry and entry["unmatch_detail"]:
+                result["unmatch_detail"] = entry["unmatch_detail"]
+            if "status" in entry and entry["status"]:
+                result["status"] = entry["status"]
+            passthrough_results.append((file_name, result))
+
+        return passthrough_results, agg_stats, group_id
 
     def _execute_subchain(self, subchain_name: str, subchain_config: Dict[str, Any], 
                          file_group: List[str], config_manager, group_index: int, group_id: str,
@@ -429,12 +458,16 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                                 return None
 
                             normalized["type"] = pick(model_output, ["class", "type", "document_type", "DOC_TYPE"])
-                            normalized["claim_no"] = pick(model_output, ["collected_ClaimNO", "claim_no", "CLAIM_NO"])
-                            normalized["vin"] = pick(model_output, ["collected_VIN", "vin", "VIN"])
-                            normalized["cnpj"] = pick(model_output, ["collected_CNPJ", "cnpj", "CNPJ"])
-                            normalized["cnpj2"] = pick(model_output, ["collected_CNPJ2", "cnpj2", "CNPJ2"])
-                            normalized["parts_value"] = pick(model_output, ["collected_parts_price", "parts_value", "PARTS_VALUE", "part_amount"])
-                            normalized["service_value"] = pick(model_output, ["collected_service_price", "service_value", "SERVICE_VALUE", "labour_amount"])
+                            normalized["claim_no"] = pick(model_output, ["collected_ClaimNO", "claim_no", "CLAIM_NO", "CLAIM_NUMBER"])
+                            normalized["vin"] = pick(model_output, ["collected_VIN", "vin", "VIN", "Chassi"])
+                            normalized["cnpj"] = pick(model_output, ["collected_CNPJ", "cnpj", "CNPJ", "CNPJ_1"])
+                            normalized["cnpj2"] = pick(model_output, ["collected_CNPJ2", "cnpj2", "CNPJ2", "CNPJ_2"])
+                            if normalized["type"] == "Serviço":
+                                normalized["parts_value"] = None
+                                normalized["service_value"] = pick(model_output, ["collected_service_price", "service_value", "SERVICE_VALUE", "labour_amount", "VALOR_TOTAL"])
+                            if normalized["type"] == "Peças":
+                                normalized["parts_value"] = pick(model_output, ["collected_parts_price", "parts_value", "PARTS_VALUE", "part_amount", "VALOR_TOTAL"])
+                                normalized["service_value"] = None
                         matched_entry["processing_extracted_data"] = normalized
                     except Exception:
                         pass

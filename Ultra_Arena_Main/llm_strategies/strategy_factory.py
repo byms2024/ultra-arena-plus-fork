@@ -322,7 +322,6 @@ class TextPreProcessingStrategy(LinkStrategy):
                 # Optionally keep raw document info
                 if self.config.get("store_raw_pdf_info", False):
                     self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
-
             
             # Extract file content
             text_content = self.extract_text(file_path)
@@ -560,10 +559,10 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                         # Normalize processing result into extracted_data schema
                         proc_fields = {
                             "type": pick(proc_norm, ["type"]) or pick(proc_raw, ["type", "DOC_TYPE", "document_type", "class"]),
-                            "cnpj": pick(proc_norm, ["cnpj"]) or pick(proc_raw, ["cnpj", "CNPJ", "collected_CNPJ"]),
-                            "cnpj2": pick(proc_norm, ["cnpj2"]) or pick(proc_raw, ["cnpj2", "CNPJ2", "collected_CNPJ2"]),
-                            "vin": pick(proc_norm, ["vin"]) or pick(proc_raw, ["vin", "VIN", "collected_VIN"]),
-                            "claim_no": pick(proc_norm, ["claim_no"]) or pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO"]),
+                            "cnpj": pick(proc_norm, ["cnpj"]) or pick(proc_raw, ["cnpj", "CNPJ", "collected_CNPJ", "CNPJ_1"]),
+                            "cnpj2": pick(proc_norm, ["cnpj2"]) or pick(proc_raw, ["cnpj2", "CNPJ2", "collected_CNPJ2", "CNPJ_2"]),
+                            "vin": pick(proc_norm, ["vin"]) or pick(proc_raw, ["vin", "VIN", "collected_VIN", "Chassi"]),
+                            "claim_no": pick(proc_norm, ["claim_no"]) or pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO", "CLAIM_NUMBER"]),
                             "parts_value": pick(proc_norm, ["parts_value"]) or pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount", "collected_parts_price"]),
                             "service_value": pick(proc_norm, ["service_value"]) or pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount", "collected_service_price"]),
                         }
@@ -578,13 +577,17 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             if proc_fields.get("vin") is None or str(proc_fields["vin"]).strip() != str(dms.get("vin")).strip():
                                 issues.append("vin")
                         if dms.get("cnpj1") is not None:
-                            if proc_fields.get("cnpj") is None or str(proc_fields["cnpj"]).strip() != str(dms.get("cnpj1")).strip():
+                            if proc_fields.get("cnpj") is None or str(proc_fields["cnpj"]).strip().replace("-", "").replace(".", "").replace("/", "") != str(dms.get("cnpj1")).strip().replace("-", "").replace(".", "").replace("/", ""):
                                 issues.append("cnpj")
-                        if dms.get("type") is "Peças":
-                            if proc_fields.get("parts_value") is None or str(dms.get("part_amount_dms")).strip().replace(",", "").replace(".", "") not in str(proc_fields["parts_value"]).strip().replace(",", "").replace(".", ""):
+                        if proc_fields.get("type") == "Peças":
+                            dms_val = str(dms.get("part_amount_dms")).strip().replace(",", "").replace(".", "")
+                            proc_val = str(proc_fields.get("parts_value")).strip().replace(",", "").replace(".", "")
+                            if proc_fields.get("parts_value") is None or dms_val not in proc_val:
                                 issues.append("part_amount_dms")
-                        if dms.get("type") is "Serviço":
-                            if proc_fields.get("service_value") is None or str(dms.get("labour_amount_dms")).strip().replace(",", "").replace(".", "") not in str(proc_fields["service_value"]).strip().replace(",", "").replace(".", ""):
+                        if proc_fields.get("type") == "Serviço":
+                            dms_val = str(dms.get("labour_amount_dms")).strip().replace(",", "").replace(".", "")
+                            proc_val = str(proc_fields.get("service_value")).strip().replace(",", "").replace(".", "")
+                            if proc_fields.get("service_value") is None or dms_val not in proc_val:
                                 issues.append("labour_amount_dms")
 
                         if issues:

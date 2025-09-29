@@ -1123,9 +1123,16 @@ def soft_resensitize_output(
             except Exception:
                 continue
 
-def resensitize_data(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Resensitize a dict by replacing placeholders using ReverseMapStore's map only."""
-    
+def resensitize_data(result):
+    """
+    Resensitize a dict, list of dicts, or list of (str, dict) tuples by replacing placeholders using ReverseMapStore's map only.
+    Handles:
+      - dict
+      - list of dicts
+      - list of (str, dict) tuples
+      - list of str
+      - single str
+    """
     try:
         reverse_map: dict[str, str] = ReverseMapStore().get_map()
     except Exception:
@@ -1137,7 +1144,7 @@ def resensitize_data(result: Dict[str, Any]) -> Dict[str, Any]:
     # Replace longer placeholders first to avoid partial overlaps
     sorted_items: list[tuple[str, str]] = sorted(reverse_map.items(), key=lambda kv: len(kv[0]), reverse=True)
 
-    def _replace_in_obj(obj: Any) -> Any:
+    def _replace_in_obj(obj):
         if isinstance(obj, str):
             out = obj
             for placeholder, original in sorted_items:
@@ -1146,11 +1153,18 @@ def resensitize_data(result: Dict[str, Any]) -> Dict[str, Any]:
                 except Exception:
                     continue
             return out
-        if isinstance(obj, list):
-            return [_replace_in_obj(it) for it in obj]
-        if isinstance(obj, dict):
+        elif isinstance(obj, dict):
             return {k: _replace_in_obj(v) for k, v in obj.items()}
-        return obj
+        elif isinstance(obj, list):
+            # Check if this is a list of (str, dict) tuples
+            if all(isinstance(item, tuple) and len(item) == 2 for item in obj):
+                return [(_replace_in_obj(t[0]), _replace_in_obj(t[1])) for t in obj]
+            else:
+                return [_replace_in_obj(it) for it in obj]
+        elif isinstance(obj, tuple) and len(obj) == 2:
+            return (_replace_in_obj(obj[0]), _replace_in_obj(obj[1]))
+        else:
+            return obj
 
     try:
         return _replace_in_obj(result)

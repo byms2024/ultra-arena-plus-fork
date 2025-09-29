@@ -7,6 +7,7 @@ from collections import Counter
 import re
 
 from dataclasses import dataclass
+from Ultra_Arena_Main_Restful.server_utils.config_assemblers.config_models import DesensitizationConfig
 from common.text_extractor import TextExtractor
 from .base_strategy import BaseProcessingStrategy
 from llm_client.llm_client_factory import LLMClientFactory
@@ -147,8 +148,34 @@ class TextPreProcessingStrategy(LinkStrategy):
         file_texts = {}
 
         for file_path in file_group:
+            # Optionally read and store PDF metadata (including DMS) into passthrough
+            try:
+                if self.config.get("enable_pdf_metadata", False):
+                    from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
+                    meta = read_pdf_metadata_dict(file_path)
+                    dms = meta.get("dms_data") or {}
+                    if dms:
+                        mapped = {
+                            "claim_id": dms.get("claim_id"),
+                            "claim_no": dms.get("claim_no"),
+                            "vin": dms.get("vin"),
+                            "dealer_code": dms.get("dealer_code"),
+                            "dealer_name": dms.get("dealer_name"),
+                            "cnpj1": dms.get("dealer_cnpj"),
+                            "gross_credit_dms": dms.get("gross_credit"),
+                            "labour_amount_dms": dms.get("labour_amount_dms"),
+                            "part_amount_dms": dms.get("part_amount_dms"),
+                            "dms_file_id": dms.get("file_id"),
+                            "dms_embedded_at": dms.get("embedded_at"),
+                        }
+                        self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                    if self.config.get("store_raw_pdf_info", False):
+                        self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+            except Exception:
+                # Non-fatal: proceed with preprocessing even if metadata extraction fails
+                pass
             
-            file_list.append(Path(file_path))
+            file_list.append(str(Path(file_path).absolute()))
 
             # Extract file content
             text_content = self.extract_text(file_path)
@@ -160,11 +187,11 @@ class TextPreProcessingStrategy(LinkStrategy):
                 else:
                     text_to_add = text_content
                 
-                file_texts[Path(file_path)] = text_to_add
+                file_texts[str(Path(file_path).absolute())] = text_to_add
             
             # If extraction failed, store results
             else:
-                file_texts[Path(file_path)] = None
+                file_texts[str(Path(file_path).absolute())] = None
 
         results = [PreprocessedData(
             files=file_list,
@@ -209,7 +236,7 @@ class TextFirstProcessingStrategy(LinkStrategy):
                 text = item.file_texts[f_path]
                 if text is not None:
                     text_to_process.append(text)
-                    original_filenames.append(f_path.name)
+                    original_filenames.append(Path(f_path).name)
                     successful_files.append(f_path)
 
         # Choose which prompt to use based on provider
@@ -304,8 +331,6 @@ class TextFirstProcessingStrategy(LinkStrategy):
                 successful_count += 1
                 if "total_token_count" in result:
                     total_tokens += result["total_token_count"]
-                # Update passthrough with successful processing result
-                self.update_status(file_path, "Completed")
                 # Store processing output in passthrough for potential post-processing use
                 if self.passthrough:
                     entry = self._get_or_create_file_entry(file_path)
@@ -329,6 +354,15 @@ class TextFirstProcessingStrategy(LinkStrategy):
             files_list = self.passthrough.get("files", [])
             after_summary = [{"file": f.get("file_path"), "status": f.get("status")} for f in files_list]
             logging.info(f"🔎 TextFirst passthrough after processing: {json.dumps(after_summary, ensure_ascii=False)}")
+
+        print(f"=============results=============: \n{results}")
+
+        try:
+            from .data_sensitization import resensitize_data
+            results = resensitize_data(results)
+            print(f"=============resens_results=============: \n{results}")
+        except Exception as e:
+            logging.error(f"❌ Failed to resensitize data: {e}")
 
         return results, group_stats
     
