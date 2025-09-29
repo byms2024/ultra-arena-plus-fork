@@ -580,6 +580,12 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                         if dms.get("cnpj1") is not None:
                             if proc_fields.get("cnpj") is None or str(proc_fields["cnpj"]).strip() != str(dms.get("cnpj1")).strip():
                                 issues.append("cnpj")
+                        if dms.get("type") is "Peças":
+                            if proc_fields.get("parts_value") is None or str(dms.get("part_amount_dms")).strip().replace(",", "").replace(".", "") not in str(proc_fields["parts_value"]).strip().replace(",", "").replace(".", ""):
+                                issues.append("part_amount_dms")
+                        if dms.get("type") is "Serviço":
+                            if proc_fields.get("service_value") is None or str(dms.get("labour_amount_dms")).strip().replace(",", "").replace(".", "") not in str(proc_fields["service_value"]).strip().replace(",", "").replace(".", ""):
+                                issues.append("labour_amount_dms")
 
                         if issues:
                             # Unmatched: record details and null-out problematic fields in extracted_data

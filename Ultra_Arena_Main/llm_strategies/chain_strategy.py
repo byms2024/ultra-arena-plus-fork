@@ -190,8 +190,33 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 for file_path, result in successful_results.items():
                     if file_path not in per_file_result:
                         per_file_result[file_path] = result
-                # Update remaining files for next subchain
-                remaining_files = failed_files
+                # Update remaining files for next subchain based on passthrough statuses
+                # Rerun only files whose status is Pending, Unmatched, or Blacklisted.
+                # Files marked as Matched should not be rerun.
+                try:
+                    # Support both the internal passthrough shape {"files": [...]} and
+                    # a direct list (summary-style) where entries may use key "file".
+                    root = (self.passthrough or {})
+                    files_list = root.get("files", root if isinstance(root, list) else [])
+                    rerun_statuses = {"pending", "unmatched", "blacklisted"}
+                    next_remaining: List[str] = []
+                    seen: set = set()
+                    for entry in files_list:
+                        try:
+                            fp = entry.get("file_path") or entry.get("file")
+                            if not fp:
+                                continue
+                            status = str(entry.get("status", "Pending")).strip().lower()
+                            if status in rerun_statuses and fp not in seen:
+                                next_remaining.append(fp)
+                                seen.add(fp)
+                        except Exception:
+                            continue
+                    logging.info(f"🔁 Selecting {len(next_remaining)} file(s) to rerun for next subchain based on passthrough status")
+                    remaining_files = next_remaining
+                except Exception as e:
+                    logging.info(f"⚠️ Passthrough scan failed; falling back to failed_files for next subchain: {e}")
+                    remaining_files = failed_files
 
 
         # Any file not finalized after all subchains => failure
@@ -339,12 +364,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["total_tokens"] += processing_stats.get("total_tokens", 0)
             agg_stats["processing_time"] += processing_stats.get("processing_time", 0)
             
-            print('🚍'*100)
             # Process results and check for success/failure
             for file_path, result in processing_results:
-                
-                print(file_path)
-                print(result)
 
                 # Ensure subchain_results entry exists for this file_path
                 if file_path not in subchain_results:
@@ -368,12 +389,12 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     for entry in files_list:
                         if file_path == entry.get("file_path"):
                             matched_entry = entry
-                            print(f"Matched entry found (absolute match): {matched_entry}")
+                            logging.info(f"Matched entry found (absolute match): {matched_entry}")
                             break
                         try:
                             if Path(str(file_path)).name == Path(str(entry.get("file_path"))).name:
                                 matched_entry = entry
-                                print(f"Matched entry found (basename match): {matched_entry}")
+                                logging.info(f"Matched entry found (basename match): {matched_entry}")
                                 break
                         except Exception:
                             pass
@@ -414,7 +435,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         matched_entry["processing_extracted_data"] = normalized
                     except Exception:
                         pass
-                    print(f"Updated matched_entry with processing_output: {matched_entry}")
+                    logging.info(f"Updated matched_entry with processing_output: {matched_entry}")
                     try:
                         short_name = None
                         try:
@@ -528,7 +549,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 logging.info(f"File '{file_path}' has error: {results.get('error')}")
         
         for file_path in successful_results:
-            print(f"Successful file: {file_path}")
+            logging.info(f"Successful file: {file_path}")
 
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
         self._log_passthrough(f"end_subchain:{subchain_name}", passthrough)

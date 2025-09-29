@@ -97,7 +97,13 @@ CNPJ_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 MONEY_REGEX: re.Pattern[str] = re.compile(
-    r"(?<!\d)(?:\d{1,3}(?:[.,]\d{3})+[.,]\d{2}|\d+[.,]\d{2})(?!\d)"
+    r"(?<!\d)"
+    r"(?:"
+    r"\d{1,3}(?:[.,\s]\d{3})+[.,]\s?\d{2}"
+    r"|"
+    r"\d+[.,]\s?\d{2}"
+    r")"
+    r"(?!\d)"
 )
 
 
@@ -141,6 +147,16 @@ def _extract_money_candidates_cents(text: str) -> list[int]:
     return sorted(candidates, reverse=True)
 
 
+def _find_expected_value_in_candidates(text: str, expected_cents: int, tolerance_cents: int = 1) -> bool:
+    candidates = _extract_money_candidates_cents(text or "")
+    if not candidates:
+        return False
+    for candidate in candidates:
+        if abs(candidate - expected_cents) <= tolerance_cents:
+            return True
+    return False
+
+
 def _build_amount_regex_from_cents(expected_cents: int) -> re.Pattern[str]:
     digits = f"{expected_cents:02d}"
     if len(digits) < 3:
@@ -160,6 +176,10 @@ def _build_amount_regex_from_cents(expected_cents: int) -> re.Pattern[str]:
 
 
 def _find_expected_value_in_text(text: str, expected_cents: int) -> bool:
+    # Prefer candidate-based matching with cent-level tolerance first
+    if _find_expected_value_in_candidates(text, expected_cents, tolerance_cents=1):
+        return True
+    # Fallback to permissive digit-order regex
     pattern = _build_amount_regex_from_cents(expected_cents)
     if pattern.search(text):
         return True
@@ -540,7 +560,7 @@ def _collect_from_files(
                     used_answers["service_price_cents"] = True
 
             if want_parts_price and data["parts_price_cents"] is None:
-                m = FieldExtractor.match_expected_amount(text, answers.parts_price)
+                m = FieldExtractor.match_expected_amount(text, answers.parts_price if isinstance(answers, Answers) else answers.get("parts_price"))
                 if m is not None:
                     data["parts_price_cents"] = m
                     used_answers["parts_price_cents"] = True
@@ -648,7 +668,7 @@ class RegexPreProcessingStrategy(LinkStrategy):
                 answers[Path(file_path).expanduser().resolve()] = {
                     "claim_no": mapped.get("claim_no"),
                     "vin": mapped.get("vin"),
-                    "service_price": mapped.get("gross_credit_dms"),
+                    "service_price": mapped.get("labour_amount_dms"),
                     "parts_price": mapped.get("part_amount_dms"),
                     "cnpj": mapped.get("cnpj1"),
                 }
@@ -746,7 +766,7 @@ class RegexProcessingStrategy(LinkStrategy):
 
             # Process
             df = self.process_preprocessed_filepaths(pre_results)
-            
+
             # For each file, collect the corresponding row as a dict
             for idx, row in df.iterrows():
                 try:
@@ -939,7 +959,7 @@ class RegexProcessingStrategy(LinkStrategy):
                             row["collected_service_price"] = "0,0"
 
                 if not found_parts_price_any:
-                    m_amt = FieldExtractor.match_expected_amount(text, answers.parts_price)
+                    m_amt = FieldExtractor.match_expected_amount(text, answers["parts_price"])
                     if m_amt is not None:
                         row["collected_parts_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
