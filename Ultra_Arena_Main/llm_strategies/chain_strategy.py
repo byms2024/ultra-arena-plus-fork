@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from collections import Counter
 import re
+import json
+import inspect
 
 # from common.text_extractor import TextExtractor
 
@@ -65,6 +67,76 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     
                     logging.info(f'{stage}: {subchain[stage][p_type]}')
 
+    # --- Logging helpers for passthrough introspection ---
+    def _make_passthrough_summary(self, passthrough: Dict[str, Any]) -> List[Dict[str, Any]]:
+        files_list = (passthrough or {}).get("files", [])
+        summary: List[Dict[str, Any]] = []
+        for entry in files_list:
+            try:
+                item: Dict[str, Any] = {
+                    "file": entry.get("file_path"),
+                    "status": entry.get("status"),
+                }
+                extracted = entry.get("extracted_data", {}) or {}
+                if isinstance(extracted, dict):
+                    for k in [
+                        "type",
+                        "claim_no",
+                        "vin",
+                        "cnpj",
+                        "cnpj1",
+                        "gross_credit_dms",
+                        "labour_amount_dms",
+                        "part_amount_dms",
+                    ]:
+                        if k in extracted:
+                            item[f"dms.{k}"] = extracted.get(k)
+                proc = entry.get("processing_output", {})
+                if isinstance(proc, dict):
+                    for k in [
+                        "type",
+                        "claim_no",
+                        "vin",
+                        "cnpj",
+                        "cnpj2",
+                        "parts_value",
+                        "service_value",
+                    ]:
+                        if k in proc:
+                            item[f"proc.{k}"] = proc.get(k)
+                else:
+                    if proc is not None:
+                        item["proc.raw"] = proc
+                proc_norm = entry.get("processing_extracted_data", {}) or {}
+                if isinstance(proc_norm, dict):
+                    for k in [
+                        "type",
+                        "claim_no",
+                        "vin",
+                        "cnpj",
+                        "cnpj2",
+                        "parts_value",
+                        "service_value",
+                    ]:
+                        if k in proc_norm:
+                            item[f"proc.{k}"] = proc_norm.get(k)
+                if "unmatch_detail" in entry:
+                    item["unmatch_detail"] = entry.get("unmatch_detail")
+                summary.append(item)
+            except Exception:
+                try:
+                    summary.append({"file": entry.get("file_path"), "status": entry.get("status"), "error": "summary_failed"})
+                except Exception:
+                    summary.append({"error": "summary_failed_unknown_entry"})
+        return summary
+
+    def _log_passthrough(self, where: str, passthrough: Dict[str, Any]) -> None:
+        try:
+            snapshot = self._make_passthrough_summary(passthrough)
+            logging.info(f"🔎 Passthrough snapshot [{where}]: {json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True)}")
+        except Exception as e:
+            logging.info(f"🔎 Passthrough snapshot [{where}] failed: {e}")
+
     def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
                            group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str
                            ) -> Tuple[List[Tuple[str, Dict]], Dict, str]:
@@ -87,6 +159,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 {"file_path": fp, "status": "Pending", "extracted_data": {}} for fp in file_group
             ]
         }
+        self._log_passthrough("init", self.passthrough)
         
 
         # Execute each subchain in sequence, iterating through chain groups and their subchains
@@ -192,15 +265,22 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             # pre_results is a list of PreprocessedData, so we need to extract per-file results
             # Each PreprocessedData contains: files (list[Path]), file_texts, file_classes, answers
             
-            # for pre_data in pre_results:
-            #     for file_path in pre_data.files:
-            #         subchain_results[str(file_path.name)] = {
-            #             "pre_processing": {
-            #                 "file_text": pre_data.file_texts.get(file_path),
-            #                 "file_class": pre_data.file_classes.get(file_path),
-            #                 "answers": pre_data.answers,
-            #             }
-            #         }
+            for pre_data in pre_results:
+                files = getattr(pre_data, "files", None)
+                file_texts = getattr(pre_data, "file_texts", None)
+                file_classes = getattr(pre_data, "file_classes", None)
+                answers = getattr(pre_data, "answers", None)
+                if not files or file_texts is None or file_classes is None:
+                    continue
+                for file_path in files:
+                    subchain_results[str(file_path)] = {
+                        "pre_processing": {
+                            "file_text": file_texts.get(file_path) if isinstance(file_texts, dict) else None,
+                            "file_class": file_classes.get(file_path) if isinstance(file_classes, dict) else None,
+                            "answers": answers,
+                        }
+                    }
+            self._log_passthrough(f"after_pre:{subchain_name}", passthrough)
                 
         except Exception as e:
             logging.error(f"❌ Pre-processing failed for subchain '{subchain_name}': {e}")
@@ -236,6 +316,14 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             if callable(_attach):
                 _attach(passthrough)
             
+            self._log_passthrough(f"before_processing:{subchain_name}", passthrough)
+            extra_kwargs: Dict[str, Any] = {}
+            try:
+                sig = inspect.signature(processing_strategy.process_file_group)  # type: ignore[attr-defined]
+                if "pre_results" in sig.parameters:
+                    extra_kwargs["pre_results"] = pre_results
+            except Exception:
+                pass
             processing_results, processing_stats, _ = processing_strategy.process_file_group(
                 config_manager=config_manager,
                 file_group=current_files,
@@ -243,7 +331,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 group_id=f"{group_id}_{subchain_name}_processing",
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                pre_results = pre_results
+                **extra_kwargs
             )
 
             agg_stats["estimated_tokens"] += processing_stats.get("estimated_tokens", 0)
@@ -275,11 +363,51 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     for entry in files_list:
                         if file_path == entry.get("file_path"):
                             matched_entry = entry
+                            print(f"Matched entry found (absolute match): {matched_entry}")
                             break
+                        try:
+                            if Path(str(file_path)).name == Path(str(entry.get("file_path"))).name:
+                                matched_entry = entry
+                                print(f"Matched entry found (basename match): {matched_entry}")
+                                break
+                        except Exception:
+                            pass
                     if matched_entry is None:
                         matched_entry = {"file_path": file_path, "status": "Pending", "extracted_data": {}}
                         files_list.append(matched_entry)
                     matched_entry["processing_output"] = model_output
+                    # Also set normalized processing extracted data for visibility and downstream usage
+                    try:
+                        normalized: Dict[str, Any] = {
+                            "type": None,
+                            "claim_no": None,
+                            "vin": None,
+                            "cnpj": None,
+                            "cnpj2": None,
+                            "parts_value": None,
+                            "service_value": None,
+                        }
+                        if isinstance(model_output, dict):
+                            normalized["type"] = model_output.get("class")
+                            normalized["claim_no"] = model_output.get("collected_ClaimNO")
+                            normalized["vin"] = model_output.get("collected_VIN")
+                            normalized["cnpj"] = model_output.get("collected_CNPJ")
+                            normalized["cnpj2"] = model_output.get("collected_CNPJ2")
+                            normalized["parts_value"] = model_output.get("collected_parts_price")
+                            normalized["service_value"] = model_output.get("collected_service_price")
+                        matched_entry["processing_extracted_data"] = normalized
+                    except Exception:
+                        pass
+                    print(f"Updated matched_entry with processing_output: {matched_entry}")
+                    try:
+                        short_name = None
+                        try:
+                            short_name = Path(file_path).name
+                        except Exception:
+                            short_name = str(file_path)
+                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough)
+                    except Exception:
+                        pass
                 except Exception as e:
                     logging.info(f"Exception in passthrough file cache: {e}")
                     # Non-fatal; continue normal flow
@@ -324,6 +452,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     subchain_results[file_path]["processing"] = {"error": f"Processing failed: {e}"}
                     subchain_results[file_path]["error"] = f"Processing failed: {e}"
                 failed_files.append(file_path)
+        finally:
+            self._log_passthrough(f"after_processing:{subchain_name}", passthrough)
         
         # 3. Post-processing link (only for successful files)
         post_config = subchain_config["post-processing"]
@@ -348,6 +478,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 if callable(_attach):
                     _attach(passthrough)
                 
+                self._log_passthrough(f"before_post:{subchain_name}", passthrough)
                 post_results, post_stats, _ = post_strategy.process_file_group(
                     config_manager=config_manager,
                     file_group=successful_files,
@@ -365,6 +496,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 for file_path, result in post_results:
                     if file_path in subchain_results:
                         subchain_results[file_path]["post_processing"] = result
+                self._log_passthrough(f"after_post:{subchain_name}", passthrough)
                         
             except Exception as e:
                 logging.error(f"❌ Post-processing failed for subchain '{subchain_name}': {e}")
@@ -380,7 +512,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 logging.info(f"File '{file_path}' has error: {results.get('error')}")
         
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
-
+        self._log_passthrough(f"end_subchain:{subchain_name}", passthrough)
+        
         return successful_results, failed_files
 
 

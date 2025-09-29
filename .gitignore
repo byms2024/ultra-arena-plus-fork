@@ -85,3 +85,4 @@ temp_images/
 
 # API Key files - should not be committed to Git
 Ultra_Arena_Main_Restful/run_profiles/*/config_api_keys.py
+Ultra_Arena_Main/config/config_base.py

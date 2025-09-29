@@ -181,6 +181,189 @@ class LinkStrategy(BaseProcessingStrategy):
         data = entry.setdefault("extracted_data", {})
         data.update(updates)
 
+# Pre-processing strategies
+class TextPreProcessingStrategy(LinkStrategy):
+    """Pre-processing strategy for text-based operations."""
+
+    def __init__(self, config: Dict[str, Any], streaming: bool = False):
+        super().__init__(config, streaming)
+        # Allow providing regex criteria via config; default to empty dict
+        self.regex_criteria = config.get("text_first_regex_criteria", config.get("regex_criteria", {})) or {}
+    
+    def desensitize_content(self, text_content: str, file_Name: str) -> str:
+        from .data_sensitization import _collect_sensitive_values_from_text, _build_text_hash_maps, _hash_text_with_maps
+        
+        aggregate_values: dict[str, set[str]] = {
+            "CNPJ": set(),
+            "CPF": set(),
+            "CEP": set(),
+            "VIN": set(),
+            "CLAIM": set(),
+            "NAME": set(),
+            "ADDRESS": set(),
+            "PHONE": set(),
+            "ORG": set(),
+            "PLATE": set(),
+        }
+
+        file_text_cache: dict[str, str] = {}
+
+        vals = _collect_sensitive_values_from_text(text_content)
+        
+        file_text_cache[file_Name] = text_content
+
+        for k, s in vals.items():
+            aggregate_values[k].update(s)
+
+        per_label_maps, reverse_map = _build_text_hash_maps(aggregate_values)
+
+        hashed_text = _hash_text_with_maps(text_content, per_label_maps)
+
+        try:
+            import csv
+            rev_path = Path("reverse_map.csv")
+            with rev_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["placeholder", "original"])
+                for placeholder, original in reverse_map.items():
+                    writer.writerow([placeholder, original])
+        except Exception:
+            pass
+        
+        return hashed_text
+
+    def extraction_evaluation_regex(self, text_content):
+
+        if not text_content:
+            logging.warning(f"⚠️ Cannot evaluate empty text from extractor")
+            return 0
+
+        successful_matches = 0
+        match_details = []
+        
+        for field_name, regex_pattern in self.regex_criteria.items():
+            try:
+                matches = re.findall(regex_pattern, text_content)
+                if matches:
+                    successful_matches += 1
+                    match_details.append(f"{field_name}: {len(matches)} match(es)")
+
+            except Exception as e:
+                logging.error(f"❌ Regex evaluation failed for {field_name}: {e}")
+        
+        return successful_matches
+
+    def extract_text(self, pdf_path):
+        """Try to extract text with two different approach."""
+
+        logging.info(f"🔄 Extracting text from PDF: {Path(pdf_path).name}")
+
+        # Set extractors
+        from ..common.text_extractor import TextExtractor
+
+        self.primary_extractor = TextExtractor('pymupdf')
+        self.secundary_extractor = TextExtractor('pytesseract')
+
+        # Extract with Primary Extractor
+        primary_text = self.primary_extractor.extract_text(pdf_path, max_length=50000)
+        primary_score = self.extraction_evaluation_regex(primary_text)
+        chosen_text = primary_text
+
+        # Decides whether should try the second option
+        should_try_secondary = (
+            ((not primary_text) or (len(primary_text) < 1000)) and 
+            self.primary_extractor.extractor_lib != self.secundary_extractor.extractor_lib
+        )
+
+        # Tries second option and decides which text to use 
+        if should_try_secondary:
+            secondary_text = self.secundary_extractor.extract_text(pdf_path, max_length=50000)
+            secondary_score = self.extraction_evaluation_regex(secondary_text)
+
+            # Only selects the second if 2_score > 1_score or only the second has actually extracted text. 
+            if (secondary_score, bool(secondary_text)) > (primary_score, bool(primary_text)):
+                chosen_text = secondary_text
+        
+        return chosen_text
+
+    def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
+                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str = "") -> Tuple[List[Tuple[str, Dict]], Dict, str]:
+        """Apply text pre-processing to files."""
+        start_time = time.time()
+        processed_texts = []
+        original_filenames = []
+        successful_files = []
+        results = []
+        
+        for file_path in file_group:
+            # Optionally read and store PDF metadata (including DmsData)
+            from ..common.pdf_metadata import read_pdf_metadata_dict
+
+            if self.config.get("enable_pdf_metadata", False):
+                meta = read_pdf_metadata_dict(file_path)
+                # Push parsed DMS data into passthrough extracted_data
+                dms = meta.get("dms_data") or {}
+                if dms:
+                    # Map keys we care about directly
+                    mapped = {
+                        "claim_id": dms.get("claim_id"),
+                        "claim_no": dms.get("claim_no"),
+                        "vin": dms.get("vin"),
+                        "dealer_code": dms.get("dealer_code"),
+                        "dealer_name": dms.get("dealer_name"),
+                        "cnpj1": dms.get("dealer_cnpj"),  # BYD CNPJ per example
+                        "gross_credit_dms": dms.get("gross_credit"),
+                        "labour_amount_dms": dms.get("labour_amount_dms"),
+                        "part_amount_dms": dms.get("part_amount_dms"),
+                        "dms_file_id": dms.get("file_id"),
+                        "dms_embedded_at": dms.get("embedded_at"),
+                    }
+                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                # Optionally keep raw document info
+                if self.config.get("store_raw_pdf_info", False):
+                    self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+
+            
+            # Extract file content
+            text_content = self.extract_text(file_path)
+
+            # If extracted, checks if it desensitization is needed
+            if text_content:
+                if getattr(self, "desensitization_config", None):
+                    text_to_add = self.desensitize_content(text_content, Path(file_path).name)
+                else:
+                    text_to_add = text_content
+                
+                # Store results
+                processed_texts.append(text_to_add)
+                original_filenames.append(Path(file_path).name)
+                successful_files.append(file_path)
+                result = {  "preprocessed": True,
+                            "preprocessing_type": "text",
+                            "preprocessing_result" : text_to_add}
+                results.append((file_path, result))
+            
+            # If extraction failed, store results
+            else:
+                result = {  "preprocessed": False,
+                            "preprocessing_type": "text",
+                            "preprocessing_result":"No text content could be extracted from PDF using any available method (PyMuPDF, PyTesseract OCR). This may be an image-based PDF with no embedded text."}
+                results.append((file_path, result))
+
+        preprocessed_values = (result_dict.get('preprocessed') for _, result_dict in results)
+        counts = Counter(preprocessed_values)
+
+        agg_stats = {
+            "total_files": len(file_group),
+            "successful_files": counts.get(True, 0),
+            "failed_files": counts.get(False, 0),
+            "total_tokens": 0,
+            "estimated_tokens": 0,
+            "processing_time": int(time.time() - start_time)
+        }
+        
+        return results, agg_stats, group_id
+
 
 class ImagePreProcessingStrategy(LinkStrategy):
     """Pre-processing strategy for image-based operations."""
@@ -310,18 +493,28 @@ class MetadataPostProcessingStrategy(LinkStrategy):
             # Merge configured metadata with any pre-extracted passthrough metadata
             merged_metadata = self.metadata_fields.copy()
             if self.passthrough:
-                # Find corresponding entry
+                # Find corresponding entry (absolute match, then basename match)
                 for entry in self.passthrough.get("files", []):
+                    matched = False
                     if entry.get("file_path") == file_path:
+                        matched = True
+                    else:
+                        try:
+                            from pathlib import Path as _P
+                            matched = _P(str(entry.get("file_path"))).name == _P(str(file_path)).name
+                        except Exception:
+                            matched = False
+                    if not matched:
+                        continue
                         # Bring DMS mapped values into metadata namespace for downstream use
-                        x = entry.get("extracted_data", {})
-                        for k in [
-                            "claim_id", "claim_no", "vin", "dealer_code", "dealer_name", "cnpj1",
-                            "gross_credit_dms", "labour_amount_dms", "part_amount_dms", "dms_file_id", "dms_embedded_at",
-                        ]:
-                            if k in x and x[k] is not None:
-                                merged_metadata[k] = x[k]
-                        break
+                    x = entry.get("extracted_data", {})
+                    for k in [
+                        "claim_id", "claim_no", "vin", "dealer_code", "dealer_name", "cnpj1",
+                        "gross_credit_dms", "labour_amount_dms", "part_amount_dms", "dms_file_id", "dms_embedded_at",
+                    ]:
+                        if k in x and x[k] is not None:
+                            merged_metadata[k] = x[k]
+                    break
 
             result = {
                 "postprocessed": True,
@@ -337,55 +530,71 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                         if entry.get("file_path") == file_path:
                             proc_raw = entry.get("processing_output", {}) or {}
                             dms = entry.get("extracted_data", {}) or {}
+                            proc_norm = entry.get("processing_extracted_data", {}) or {}
+                            matched = True
+                        else:
+                            matched = False
+                        if not matched:
+                            try:
+                                from pathlib import Path as _P
+                                if _P(str(entry.get("file_path"))).name == _P(str(file_path)).name:
+                                    proc_raw = entry.get("processing_output", {}) or {}
+                                    dms = entry.get("extracted_data", {}) or {}
+                                    matched = True
+                            except Exception:
+                                matched = False
+                        if not matched:
+                            continue
 
-                            def pick(obj, keys):
-                                for k in keys:
-                                    if k in obj:
-                                        return obj[k]
-                                    if k.upper() in obj:
-                                        return obj[k.upper()]
-                                    if k.lower() in obj:
-                                        return obj[k.lower()]
-                                return None
+                        def pick(obj, keys):
+                            for k in keys:
+                                if k in obj:
+                                    return obj[k]
+                                if k.upper() in obj:
+                                    return obj[k.upper()]
+                                if k.lower() in obj:
+                                    return obj[k.lower()]
+                            return None
 
-                            # Normalize processing result into extracted_data schema
-                            proc_fields = {
-                                "type": pick(proc_raw, ["type", "DOC_TYPE", "document_type", "class"]),
-                                "cnpj": pick(proc_raw, ["cnpj", "CNPJ", "collected_CNPJ"]),
-                                "cnpj2": pick(proc_raw, ["cnpj2", "CNPJ2", "collected_CNPJ2"]),
-                                "vin": pick(proc_raw, ["vin", "VIN", "collected_VIN"]),
-                                "claim_no": pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO"]),
-                                "parts_value": pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount", "collected_parts_price"]),
-                                "service_value": pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount", "collected_service_price"]),
-                            }
+                        # Normalize processing result into extracted_data schema
+                        proc_fields = {
+                            "type": pick(proc_norm, ["type"]) or pick(proc_raw, ["type", "DOC_TYPE", "document_type", "class"]),
+                            "cnpj": pick(proc_norm, ["cnpj"]) or pick(proc_raw, ["cnpj", "CNPJ", "collected_CNPJ"]),
+                            "cnpj2": pick(proc_norm, ["cnpj2"]) or pick(proc_raw, ["cnpj2", "CNPJ2", "collected_CNPJ2"]),
+                            "vin": pick(proc_norm, ["vin"]) or pick(proc_raw, ["vin", "VIN", "collected_VIN"]),
+                            "claim_no": pick(proc_norm, ["claim_no"]) or pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO"]),
+                            "parts_value": pick(proc_norm, ["parts_value"]) or pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount", "collected_parts_price"]),
+                            "service_value": pick(proc_norm, ["service_value"]) or pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount", "collected_service_price"]),
+                        }
 
-                            # Compare with DMS metadata (from pre-processing)
-                            issues = []
-                            # Only compare keys that exist in DMS
-                            if dms.get("claim_no") is not None:
-                                if proc_fields.get("claim_no") is None or str(proc_fields["claim_no"]).strip() != str(dms.get("claim_no")).strip():
-                                    issues.append("claim_no")
-                            if dms.get("vin") is not None:
-                                if proc_fields.get("vin") is None or str(proc_fields["vin"]).strip() != str(dms.get("vin")).strip():
-                                    issues.append("vin")
-                            if dms.get("cnpj1") is not None:
-                                if proc_fields.get("cnpj") is None or str(proc_fields["cnpj"]).strip() != str(dms.get("cnpj1")).strip():
-                                    issues.append("cnpj")
+                        # Compare with DMS metadata (from pre-processing)
+                        issues = []
+                        # Only compare keys that exist in DMS
+                        if dms.get("claim_no") is not None:
+                            if proc_fields.get("claim_no") is None or str(proc_fields["claim_no"]).strip() != str(dms.get("claim_no")).strip():
+                                issues.append("claim_no")
+                        if dms.get("vin") is not None:
+                            if proc_fields.get("vin") is None or str(proc_fields["vin"]).strip() != str(dms.get("vin")).strip():
+                                issues.append("vin")
+                        if dms.get("cnpj1") is not None:
+                            if proc_fields.get("cnpj") is None or str(proc_fields["cnpj"]).strip() != str(dms.get("cnpj1")).strip():
+                                issues.append("cnpj")
 
-                            if issues:
-                                # Unmatched: record details and null-out problematic fields in extracted_data
-                                entry["status"] = "Unmatched"
-                                entry["unmatch_detail"] = issues
-                                final_fields = dict(proc_fields)
-                                for k in issues:
-                                    # issues use extracted_data key names (claim_no, vin, cnpj)
-                                    final_fields[k] = None
-                                entry["extracted_data"] = final_fields
-                            else:
-                                # Matched: extracted_data is the processing result
-                                entry["status"] = "Matched"
-                                entry["extracted_data"] = proc_fields
-                            break
+                        if issues:
+                            # Unmatched: record details and null-out problematic fields in extracted_data
+                            entry["status"] = "Unmatched"
+                            entry["unmatch_detail"] = issues
+                            final_fields = dict(proc_fields)
+                            for k in issues:
+                                # issues use extracted_data key names (claim_no, vin, cnpj)
+                                final_fields[k] = None
+                            entry["extracted_data"] = final_fields
+                        else:
+                            # Matched: extracted_data is the processing result
+                            entry["status"] = "Matched"
+                            entry["extracted_data"] = proc_fields
+                        break
+
             except Exception:
                 # Non-fatal; continue
                 pass
