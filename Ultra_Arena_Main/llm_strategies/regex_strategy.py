@@ -11,7 +11,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from unittest import result
-from oracledb import dataframe
 import pandas as pd
 
 from Ultra_Arena_Main.llm_strategies.strategy_factory import LinkStrategy
@@ -494,8 +493,6 @@ def categorize_pdfs(root: str | Path) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for file_path in _iter_pdf_files(root_path):
         text = PdfTextExtractor.extract_text_best_effort(file_path)
-        print("=================================text================================")
-        print(text)
         doc_class = PdfClassifier.classify_pdf(text)
         rows.append({"file": str(file_path), "class": doc_class})
     return pd.DataFrame(rows, columns=["file", "class"]) if rows else pd.DataFrame(columns=["file", "class"])
@@ -749,12 +746,7 @@ class RegexProcessingStrategy(LinkStrategy):
 
             # Process
             df = self.process_preprocessed_filepaths(pre_results)
-            for col in df.columns:
-                print(f"Column: {col}")
-                for entry in df[col]:
-                    print(entry)
-                print("-" * 20)
-            print(df)
+            
             # For each file, collect the corresponding row as a dict
             for idx, row in df.iterrows():
                 try:

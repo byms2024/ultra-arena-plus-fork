@@ -264,9 +264,9 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         model_output = result.get("file_model_output", result)
                     else:
                         model_output = result
-                    print(f"model_output (from result): {model_output}")
+                    logging.info(f"model_output (from result): {model_output}")
                 except Exception as e:
-                    print(f"Exception when getting model_output: {e}")
+                    logging.info(f"Exception when getting model_output: {e}")
                     model_output = result
 
                 try:
@@ -279,10 +279,9 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     if matched_entry is None:
                         matched_entry = {"file_path": file_path, "status": "Pending", "extracted_data": {}}
                         files_list.append(matched_entry)
-                        print(f"No matched entry, created new: {matched_entry}")
                     matched_entry["processing_output"] = model_output
                 except Exception as e:
-                    print(f"Exception in passthrough file cache: {e}")
+                    logging.info(f"Exception in passthrough file cache: {e}")
                     # Non-fatal; continue normal flow
                     pass
 
@@ -299,7 +298,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 else:
                     # Check mandatory keys if enabled
                     if self.chain_on_missing_keys:
-                        print(f"Checking mandatory keys for file_path {file_path}")
+                        logging.info(f"Checking mandatory keys for file_path {file_path}")
                         # Use the actual model output for key checking
                         ok, _missing = self.check_mandatory_keys(model_output, file_path, 
                                                                  getattr(self, "benchmark_comparator", None))
@@ -373,18 +372,12 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         
         # Separate successful and failed results
         successful_results = {}
-        print("---- DEBUG: subchain_results ----")
+
         for file_path, results in subchain_results.items():
-            print(f"File: {file_path}")
-            print(f"Results: {results}")
             if "error" not in results:
-                print(f"File '{file_path}' is successful, adding to successful_results.")
                 successful_results[file_path] = results
             else:
-                print(f"File '{file_path}' has error: {results.get('error')}")
-        print(f"---- DEBUG: successful_results ({len(successful_results)}) ----")
-        for file_path in successful_results:
-            print(f"Successful file: {file_path}")
+                logging.info(f"File '{file_path}' has error: {results.get('error')}")
         
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
 

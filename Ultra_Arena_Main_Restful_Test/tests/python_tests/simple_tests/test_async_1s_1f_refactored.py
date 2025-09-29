@@ -35,7 +35,37 @@ def main():
                             "proc-type": "regex",
                         },
                         "post-processing": {
-                            "post-type": "regex",
+                            "post-type": "metadata",
+                            "retries": {
+                                "pre_retry": {
+                                    "retry_count": 0
+                                },
+                                "proc_retry": {
+                                    "retry_count": 0
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "censor": True,
+                        "metadata_fields": [
+                            "claim_id",
+                            "claim_no",
+                            "vin",
+                            "dealer_cnpj",
+                            "part_amount_dms",
+                            "labour_amount_dms"
+                        ],
+                        "subchain_name": "subchain_text",
+                        "fileNumberPerFile": 1,
+                        "pre-processing": {
+                            "pre-type": "text"
+                        },
+                        "processing": {
+                            "proc-type": "text_first",
+                        },
+                        "post-processing": {
+                            "post-type": "metadata",
                             "retries": {
                                 "pre_retry": {
                                     "retry_count": 0

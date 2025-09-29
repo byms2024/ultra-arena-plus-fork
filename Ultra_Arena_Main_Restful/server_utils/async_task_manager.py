@@ -161,10 +161,6 @@ class AsyncTaskManager:
                     combo_name = request_data.get('combo_name')
                     chain_config = None
 
-                print('⚙️'*100)
-                print(chain_config)
-                print('⚙️'*100)
-
                 result_code = run_combo_processing(
                     benchmark_eval_mode=request_data.get('run_type') == 'evaluation',
                     combo_name=combo_name,

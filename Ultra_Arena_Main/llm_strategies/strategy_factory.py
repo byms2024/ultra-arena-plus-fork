@@ -18,7 +18,6 @@ class ProcessingStrategyFactory:
     @staticmethod
     def create_strategy(strategy_type: str, config: Dict[str, Any], streaming: bool = False) -> BaseProcessingStrategy:
         """Create a processing strategy based on type."""
-        print("================================CreatingStrategy================================", strategy_type)
         if strategy_type == "direct_file":
             from .direct_file_strategy import DirectFileProcessingStrategy
             return DirectFileProcessingStrategy(config, streaming=streaming)
@@ -351,13 +350,13 @@ class MetadataPostProcessingStrategy(LinkStrategy):
 
                             # Normalize processing result into extracted_data schema
                             proc_fields = {
-                                "type": pick(proc_raw, ["type", "DOC_TYPE", "document_type"]),
-                                "cnpj": pick(proc_raw, ["cnpj", "CNPJ"]),
-                                "cnpj2": pick(proc_raw, ["cnpj2", "CNPJ2"]),
-                                "vin": pick(proc_raw, ["vin", "VIN"]),
-                                "claim_no": pick(proc_raw, ["claim_no", "CLAIM_NO"]),
-                                "parts_value": pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount"]),
-                                "service_value": pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount"]),
+                                "type": pick(proc_raw, ["type", "DOC_TYPE", "document_type", "class"]),
+                                "cnpj": pick(proc_raw, ["cnpj", "CNPJ", "collected_CNPJ"]),
+                                "cnpj2": pick(proc_raw, ["cnpj2", "CNPJ2", "collected_CNPJ2"]),
+                                "vin": pick(proc_raw, ["vin", "VIN", "collected_VIN"]),
+                                "claim_no": pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO"]),
+                                "parts_value": pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount", "collected_parts_price"]),
+                                "service_value": pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount", "collected_service_price"]),
                             }
 
                             # Compare with DMS metadata (from pre-processing)
