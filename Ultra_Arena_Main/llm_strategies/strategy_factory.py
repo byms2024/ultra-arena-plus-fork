@@ -619,7 +619,7 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             if proc_fields.get("service_value") is None or dms_val not in proc_val:
                                 issues.append("labour_amount_dms")
 
-                        if issues:
+                        if issues and proc_fields.get("type") != "Outros":
                             # Unmatched: record details but don't modify extracted_data
                             entry["status"] = "Unmatched"
                             entry["unmatch_detail"] = issues

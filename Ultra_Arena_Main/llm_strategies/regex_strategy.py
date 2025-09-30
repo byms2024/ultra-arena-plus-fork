@@ -617,6 +617,14 @@ class RegexPreProcessingStrategy(LinkStrategy):
         files: list[Path] = [Path(f).expanduser().resolve() for f in file_paths]
 
         auto_answers = self.get_target_from_pdfs_metadata(file_paths)
+        # If there is no DMS metadata at all, skip any regex pre-processing work
+        if not auto_answers:
+            return PreprocessedData(
+                files=files,
+                file_texts={},
+                file_classes={},
+                answers=auto_answers,
+            )
        
         if manual_answers is not None:
             auto_answers = Answers(
@@ -684,7 +692,8 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "dms_embedded_at": dms.get("embedded_at"),
                 }
                 # Store DMS data in passthrough for visibility in logs
-                self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                if any(v is not None for v in mapped.values()):
+                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
                 # Store as a dict, not as an Answers object
                 answers[Path(file_path).expanduser().resolve()] = {
                     "claim_no": mapped.get("claim_no"),
@@ -695,7 +704,9 @@ class RegexPreProcessingStrategy(LinkStrategy):
                 }
             # Optionally keep raw document info
             if self.config.get("store_raw_pdf_info", False):
-                self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+                # Only attach when metadata exists; avoid polluting passthrough when no metadata
+                if meta.get("document_info"):
+                    self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
 
         return answers  # dict mapping file_path to dict; override via manual answers if provided
 
@@ -759,6 +770,8 @@ class RegexProcessingStrategy(LinkStrategy):
             "failed_files": 0,
             "total_tokens": 0,
             "estimated_tokens": 0,
+            "prompt_tokens": 0,
+            "candidate_tokens": 0,
             "processing_time": 0
         }
 
@@ -784,7 +797,39 @@ class RegexProcessingStrategy(LinkStrategy):
                     cnpj=getattr(self.answers, "cnpj", None),
                 )
 
-            # Process
+            # If there is no metadata for any file, return empty results to avoid overwriting prior subchain data
+            has_any_metadata = False
+            if pre_results and isinstance(pre_results, list):
+                for p in pre_results:
+                    try:
+                        ans_map = getattr(p, "answers", None)
+                        files = getattr(p, "files", [])
+                        if isinstance(ans_map, dict):
+                            for f in files:
+                                ans = ans_map.get(f)
+                                if isinstance(ans, dict) and len(ans) > 0:
+                                    has_any_metadata = True
+                                    break
+                        if has_any_metadata:
+                            break
+                    except Exception:
+                        continue
+
+            if not has_any_metadata:
+                for file_path in file_group:
+                    try:
+                        # Do not write to passthrough when skipping due to no metadata
+                        results.append((file_path, {}))
+                        agg_stats["successful_files"] += 1
+                    except Exception as e:
+                        logging.error(f"❌ Error preparing empty result for file {file_path}: {e}")
+                        error_result = {"error": str(e), "file_path": file_path}
+                        results.append((file_path, error_result))
+                        agg_stats["failed_files"] += 1
+                agg_stats["processing_time"] = time.time() - start_time
+                return results, agg_stats, "skipped_no_metadata"
+
+            # Process normally
             df = self.process_preprocessed_filepaths(pre_results)
 
             # For each file, collect the corresponding row as a dict
@@ -819,17 +864,62 @@ class RegexProcessingStrategy(LinkStrategy):
 
     def process_preprocessed_filepaths(self, pre: PreprocessedData) -> pd.DataFrame:
 
+        # Normalize input to an iterable of PreprocessedData
+        pre_list: list[PreprocessedData] = pre if isinstance(pre, list) else [pre]
+
+        # If there is no metadata for any file, skip regex processing entirely
+        has_any_metadata = False
+        for p in pre_list:
+            if isinstance(p.answers, dict):
+                for f in p.files:
+                    ans = p.answers.get(f, None)
+                    if isinstance(ans, dict) and len(ans) > 0:
+                        has_any_metadata = True
+                        break
+            if has_any_metadata:
+                break
+
+        columns = [
+            "file",
+            "class",
+            "collected_service_price",
+            "collected_parts_price",
+            "collected_CNPJ",
+            "collected_CNPJ2",
+            "collected_VIN",
+            "collected_ClaimNO",
+            "search_mode",
+        ]
+
+        if not has_any_metadata:
+            rows_no_meta: list[dict[str, Any]] = []
+            for p in pre_list:
+                for f in p.files:
+                    cls = p.file_classes.get(f, "")
+                    rows_no_meta.append({
+                        "file": str(f.name),
+                        "class": cls,
+                        "collected_service_price": "",
+                        "collected_parts_price": "",
+                        "collected_CNPJ": "",
+                        "collected_CNPJ2": "",
+                        "collected_VIN": "",
+                        "collected_ClaimNO": "",
+                        "search_mode": "skipped_no_metadata",
+                    })
+            return pd.DataFrame(rows_no_meta, columns=columns) if rows_no_meta else pd.DataFrame(columns=columns)
+
         rows: list[dict[str, Any]] = []
         found_service_price_any = False
         found_parts_price_any = False
         temp_rows: dict[Path, dict[str, Any]] = {}
 
-        for p in pre:
+        for p in pre_list:
 
             for f in p.files:
                 file_texts = p.file_texts.get(f, "")
                 file_classes = p.file_classes.get(f, "")
-                answers = p.answers.get(f, "")
+                answers = p.answers.get(f) if isinstance(p.answers, dict) else None
 
                 cls = file_classes
                 text = file_texts
@@ -848,8 +938,14 @@ class RegexProcessingStrategy(LinkStrategy):
 
                 used_answers_any = False
 
+                claim_no_ans = answers.get("claim_no") if isinstance(answers, dict) else None
+                vin_ans = answers.get("vin") if isinstance(answers, dict) else None
+                cnpj_ans = answers.get("cnpj") if isinstance(answers, dict) else None
+                service_price_ans = answers.get("service_price") if isinstance(answers, dict) else None
+                parts_price_ans = answers.get("parts_price") if isinstance(answers, dict) else None
+
                 if cls == "Serviço":
-                    m = FieldExtractor.match_expected_claim_no(text, answers["claim_no"])
+                    m = FieldExtractor.match_expected_claim_no(text, claim_no_ans)
                     if m:
                         row["collected_ClaimNO"] = m
                         used_answers_any = True
@@ -858,7 +954,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         if b:
                             row["collected_ClaimNO"] = b
 
-                    m = FieldExtractor.match_expected_vin(text, answers["vin"])
+                    m = FieldExtractor.match_expected_vin(text, vin_ans)
                     if m:
                         row["collected_VIN"] = m
                         used_answers_any = True
@@ -867,7 +963,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         if b:
                             row["collected_VIN"] = b
 
-                    m = FieldExtractor.match_expected_cnpj(text, answers["cnpj"])
+                    m = FieldExtractor.match_expected_cnpj(text, cnpj_ans)
                     if m:
                         row["collected_CNPJ"] = m
                         used_answers_any = True
@@ -876,14 +972,14 @@ class RegexProcessingStrategy(LinkStrategy):
                         if b:
                             row["collected_CNPJ"] = b
 
-                    m_amt = FieldExtractor.match_expected_amount(text, answers["service_price"])
+                    m_amt = FieldExtractor.match_expected_amount(text, service_price_ans)
                     if m_amt is not None:
                         row["collected_service_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
                     if not row["collected_service_price"]:
                         cands = FieldExtractor.extract_price_candidates_cents(text)
-                        if cands and answers["service_price"]:
-                            clean_target = str(answers["service_price"]).replace(".", "").replace(",", "")
+                        if cands and service_price_ans:
+                            clean_target = str(service_price_ans).replace(".", "").replace(",", "")
                             for candidate in cands:
                                 str_candidate = str(candidate)
                                 formatted = _format_brl_from_cents(candidate)
@@ -897,7 +993,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         found_service_price_any = True
 
                 elif cls == "Peças":
-                    m = FieldExtractor.match_expected_claim_no(text, answers["claim_no"])
+                    m = FieldExtractor.match_expected_claim_no(text, claim_no_ans)
                     if m:
                         row["collected_ClaimNO"] = m
                         used_answers_any = True
@@ -906,7 +1002,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         if b:
                             row["collected_ClaimNO"] = b
 
-                    m = FieldExtractor.match_expected_vin(text, answers["vin"])
+                    m = FieldExtractor.match_expected_vin(text, vin_ans)
                     if m:
                         row["collected_VIN"] = m
                         used_answers_any = True
@@ -915,7 +1011,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         if b:
                             row["collected_VIN"] = b
 
-                    m = FieldExtractor.match_expected_cnpj(text, answers["cnpj"])
+                    m = FieldExtractor.match_expected_cnpj(text, cnpj_ans)
                     if m:
                         row["collected_CNPJ"] = m
                         used_answers_any = True
@@ -924,14 +1020,14 @@ class RegexProcessingStrategy(LinkStrategy):
                         if b:
                             row["collected_CNPJ"] = b
 
-                    m_amt = FieldExtractor.match_expected_amount(text, answers["parts_price"])
+                    m_amt = FieldExtractor.match_expected_amount(text, parts_price_ans)
                     if m_amt is not None:
                         row["collected_parts_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
                     if not row["collected_parts_price"]:
                         cands = FieldExtractor.extract_price_candidates_cents(text)
-                        if cands and answers["parts_price"]:
-                            clean_target = str(answers["parts_price"]).replace(".", "").replace(",", "")
+                        if cands and parts_price_ans:
+                            clean_target = str(parts_price_ans).replace(".", "").replace(",", "")
                             for candidate in cands:
                                 str_candidate = str(candidate)
                                 formatted = _format_brl_from_cents(candidate)
@@ -947,7 +1043,7 @@ class RegexProcessingStrategy(LinkStrategy):
             for f in p.files:
                 file_texts = p.file_texts.get(f, "")
                 file_classes = p.file_classes.get(f, "")
-                answers = p.answers.get(f, "")
+                answers = p.answers.get(f) if isinstance(p.answers, dict) else None
 
                 if file_classes != "Outros":
                     continue
@@ -968,8 +1064,11 @@ class RegexProcessingStrategy(LinkStrategy):
 
                 used_answers_any = False
 
+                service_price_ans = answers.get("service_price") if isinstance(answers, dict) else None
+                parts_price_ans = answers.get("parts_price") if isinstance(answers, dict) else None
+
                 if not found_service_price_any:
-                    m_amt = FieldExtractor.match_expected_amount(text, answers["service_price"])
+                    m_amt = FieldExtractor.match_expected_amount(text, service_price_ans)
                     if m_amt is not None:
                         row["collected_service_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
@@ -979,7 +1078,7 @@ class RegexProcessingStrategy(LinkStrategy):
                             row["collected_service_price"] = "0,0"
 
                 if not found_parts_price_any:
-                    m_amt = FieldExtractor.match_expected_amount(text, answers["parts_price"])
+                    m_amt = FieldExtractor.match_expected_amount(text, parts_price_ans)
                     if m_amt is not None:
                         row["collected_parts_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
@@ -994,19 +1093,6 @@ class RegexProcessingStrategy(LinkStrategy):
                 temp_rows[f] = row
 
             rows.extend(temp_rows[file] for file in p.files)
-
-            columns = [
-                "file",
-                "class",
-                "collected_service_price",
-                "collected_parts_price",
-                "collected_CNPJ",
-                "collected_CNPJ2",
-                "collected_VIN",
-                "collected_ClaimNO",
-                "search_mode",
-            ]
-            
 
         return pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(columns=columns)
 

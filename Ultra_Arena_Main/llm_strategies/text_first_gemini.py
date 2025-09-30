@@ -314,7 +314,9 @@ class TextFirstProcessingStrategy(LinkStrategy):
                 "successful_files": 0,
                 "failed_files": len(successful_files),
                 "total_tokens": 0,
-                "estimated_tokens": 0
+                "estimated_tokens": 0,
+                "prompt_tokens": 0,
+                "candidate_tokens": 0
             }
             return results, group_stats
         
@@ -331,6 +333,8 @@ class TextFirstProcessingStrategy(LinkStrategy):
         successful_count = 0
         failed_count = 0
         total_tokens = 0
+        candidate_tokens = 0
+        prompt_tokens = 0
         
         # Use the existing OpenAIFileMappingStrategy for fuzzy matching
         from processors.file_mapping_utils import FileMappingFactory
@@ -353,6 +357,10 @@ class TextFirstProcessingStrategy(LinkStrategy):
                 successful_count += 1
                 if "total_token_count" in result:
                     total_tokens += result["total_token_count"]
+                if "prompt_token_count" in result:
+                    prompt_tokens += result["prompt_token_count"]
+                if "candidates_token_count" in result:
+                    candidate_tokens += result["candidates_token_count"]
                 # Store processing output in passthrough for potential post-processing use
                 if self.passthrough:
                     entry = self._get_or_create_file_entry(file_path)
@@ -368,7 +376,9 @@ class TextFirstProcessingStrategy(LinkStrategy):
             "successful_files": successful_count,
             "failed_files": failed_count,
             "total_tokens": total_tokens,
-            "estimated_tokens": 0
+            "estimated_tokens": prompt_tokens + candidate_tokens + (662*len(successful_files)),
+            "prompt_tokens": prompt_tokens,
+            "candidate_tokens": candidate_tokens
         }
 
         # Log passthrough state after processing
@@ -377,12 +387,9 @@ class TextFirstProcessingStrategy(LinkStrategy):
             after_summary = [{"file": f.get("file_path"), "status": f.get("status")} for f in files_list]
             logging.info(f"🔎 TextFirst passthrough after processing: {json.dumps(after_summary, ensure_ascii=False)}")
 
-        print(f"=============results=============: \n{results}")
-
         try:
             from .data_sensitization import resensitize_data
             results = resensitize_data(results)
-            print(f"=============resens_results=============: \n{results}")
         except Exception as e:
             logging.error(f"❌ Failed to resensitize data: {e}")
 

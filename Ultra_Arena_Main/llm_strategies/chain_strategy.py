@@ -154,6 +154,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             "successful_files": 0,
             "failed_files": 0,
             "total_tokens": 0,
+            "prompt_tokens": 0,
+            "candidate_tokens": 0,
             "estimated_tokens": 0,
             "processing_time": 0
         }
@@ -203,7 +205,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     # a direct list (summary-style) where entries may use key "file".
                     root = (self.passthrough or {})
                     files_list = root.get("files", root if isinstance(root, list) else [])
-                    rerun_statuses = {"pending", "unmatched", "blacklisted"}
+                    rerun_statuses = {"pending", "unmatched", "failed"}
                     next_remaining: List[str] = []
                     seen: set = set()
                     for entry in files_list:
@@ -251,7 +253,6 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         agg_stats["failed_files"] = agg_stats["total_files"] - agg_stats["successful_files"]
         agg_stats["processing_time"] = max(agg_stats["processing_time"], int(time.time() - start_time))
 
-        # INSERT_YOUR_CODE
         # Transform self.passthrough to [(file_name, result)] format, including unmatch_detail if present
         passthrough_results = []
         passthrough_files = self.passthrough.get("files", [])
@@ -405,7 +406,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             except Exception:
                 pass
 
-            processing_results, processing_stats, _ = processing_strategy.process_file_group(
+            processing_results, processing_stats, processing_stage_status = processing_strategy.process_file_group(
                 config_manager=config_manager,
                 file_group=current_files,
                 group_index=group_index,
@@ -418,9 +419,24 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             agg_stats["estimated_tokens"] += processing_stats.get("estimated_tokens", 0)
             agg_stats["total_tokens"] += processing_stats.get("total_tokens", 0)
             agg_stats["processing_time"] += processing_stats.get("processing_time", 0)
+            agg_stats["prompt_tokens"] += processing_stats.get("prompt_tokens", 0)
+            agg_stats["candidate_tokens"] += processing_stats.get("candidate_tokens", 0)
             
+            # If processing was explicitly skipped due to missing metadata (e.g., regex),
+            # do not write anything to passthrough and do not mark success/failure here.
+            skip_passthrough_writes = (
+                processing_type == "regex" and processing_stage_status == "skipped_no_metadata"
+            )
+
             # Process results and check for success/failure
             for file_path, result in processing_results:
+
+                if skip_passthrough_writes:
+                    logging.info(f"⏭️ Skipping passthrough writes for {file_path} due to no metadata ({processing_type})")
+                    # Ensure we don't mark success/failure; leave status as-is for next subchain
+                    if file_path not in subchain_results:
+                        subchain_results[file_path] = {}
+                    continue
 
                 # Ensure subchain_results entry exists for this file_path
                 if file_path not in subchain_results:
@@ -468,7 +484,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             "parts_value": None,
                             "service_value": None,
                         }
-                        if isinstance(model_output, dict):
+                        if isinstance(model_output, dict) and model_output != {}:
                             # Helper to pick from multiple possible keys
                             def pick(obj, keys):
                                 for k in keys:
@@ -587,6 +603,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 agg_stats["estimated_tokens"] += post_stats.get("estimated_tokens", 0)
                 agg_stats["total_tokens"] += post_stats.get("total_tokens", 0)
                 agg_stats["processing_time"] += post_stats.get("processing_time", 0)
+                agg_stats["prompt_tokens"] += post_stats.get("prompt_tokens", 0)
+                agg_stats["candidate_tokens"] += post_stats.get("candidate_tokens", 0)
                 
                 # Store post-processing results
                 for file_path, result in post_results:
