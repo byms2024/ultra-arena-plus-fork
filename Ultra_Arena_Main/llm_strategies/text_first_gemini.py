@@ -159,27 +159,27 @@ class TextPreProcessingStrategy(LinkStrategy):
                 continue
 
             try:
-                if self.config.get("enable_pdf_metadata", False):
-                    from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
-                    meta = read_pdf_metadata_dict(file_path)
-                    dms = meta.get("dms_data") or {}
-                    if dms:
-                        mapped = {
-                            "claim_id": dms.get("claim_id"),
-                            "claim_no": dms.get("claim_no"),
-                            "vin": dms.get("vin"),
-                            "dealer_code": dms.get("dealer_code"),
-                            "dealer_name": dms.get("dealer_name"),
-                            "cnpj1": dms.get("dealer_cnpj"),
-                            "gross_credit_dms": dms.get("gross_credit"),
-                            "labour_amount_dms": dms.get("labour_amount_dms"),
-                            "part_amount_dms": dms.get("part_amount_dms"),
-                            "dms_file_id": dms.get("file_id"),
-                            "dms_embedded_at": dms.get("embedded_at"),
-                        }
-                        self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
-                    if self.config.get("store_raw_pdf_info", False):
-                        self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+                # if self.config.get("enable_pdf_metadata", False):
+                from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
+                meta = read_pdf_metadata_dict(file_path)
+                dms = meta.get("dms_data") or {}
+                if dms:
+                    mapped = {
+                        "claim_id": dms.get("claim_id"),
+                        "claim_no": dms.get("claim_no"),
+                        "vin": dms.get("vin"),
+                        "dealer_code": dms.get("dealer_code"),
+                        "dealer_name": dms.get("dealer_name"),
+                        "cnpj1": dms.get("dealer_cnpj"),
+                        "gross_credit_dms": dms.get("gross_credit"),
+                        "labour_amount_dms": dms.get("labour_amount_dms"),
+                        "part_amount_dms": dms.get("part_amount_dms"),
+                        "dms_file_id": dms.get("file_id"),
+                        "dms_embedded_at": dms.get("embedded_at"),
+                    }
+                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                if self.config.get("store_raw_pdf_info", False):
+                    self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
             except Exception:
                 # Non-fatal: proceed with preprocessing even if metadata extraction fails
                 pass
