@@ -22,7 +22,7 @@ try:
     from PIL import Image  # type: ignore
     import pytesseract  # type: ignore
     from pdf2image import convert_from_path  # type: ignore
-    _ocr_modules_available = True
+    _ocr_modules_available = False
 except Exception:
     _ocr_modules_available = False
 
@@ -828,6 +828,23 @@ class RegexProcessingStrategy(LinkStrategy):
                         agg_stats["failed_files"] += 1
                 agg_stats["processing_time"] = time.time() - start_time
                 return results, agg_stats, "skipped_no_metadata"
+
+            # Blacklist any files that have empty text in pre_results
+            try:
+                if pre_results and isinstance(pre_results, list):
+                    for p in pre_results:
+                        files = getattr(p, "files", [])
+                        file_texts = getattr(p, "file_texts", {}) or {}
+                        for f in files:
+                            try:
+                                t = file_texts.get(f, "") if isinstance(file_texts, dict) else ""
+                                if not t:
+                                    self.blacklist_file(str(f), "Empty text in pre_results file_texts", "regex_preprocessing")
+                            except Exception:
+                                continue
+            except Exception:
+                # Non-fatal; continue processing
+                pass
 
             # Process normally
             df = self.process_preprocessed_filepaths(pre_results)

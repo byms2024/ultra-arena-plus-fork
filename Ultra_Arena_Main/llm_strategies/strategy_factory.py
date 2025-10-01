@@ -633,6 +633,12 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                                 passthrough_entry = self.passthrough.get(file_path)
                                 if passthrough_entry and isinstance(passthrough_entry, dict) and "unmatch_detail" in passthrough_entry:
                                     del passthrough_entry["unmatch_detail"]
+
+                        if entry.get("blacklisted"):
+                            entry["status"] = "Blacklisted"
+                            if "unmatch_detail" in entry:
+                                del entry["unmatch_detail"]
+
                         break
             except Exception:
                 # Non-fatal; continue

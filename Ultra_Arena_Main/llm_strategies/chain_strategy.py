@@ -198,8 +198,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     if file_path not in per_file_result:
                         per_file_result[file_path] = result
                 # Update remaining files for next subchain based on passthrough statuses
-                # Rerun only files whose status is Pending, Unmatched, or Blacklisted.
-                # Files marked as Matched should not be rerun.
+                # Rerun only files whose status is Pending, Unmatched, or failed.
+                # Files marked as Matched or Blacklisted should not be rerun.
                 try:
                     # Support both the internal passthrough shape {"files": [...]} and
                     # a direct list (summary-style) where entries may use key "file".
