@@ -236,10 +236,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 # Files that never got processed remain Pending
                 self._update_file_status(file_path, "Pending")
                 logging.info(f"❌ Chain exhausted: {file_path}")
-            else:
+            # else:
                 # Files that completed processing should be marked as Completed
-                if "error" not in per_file_result[file_path]:
-                    self._update_file_status(file_path, "Completed")
+                # if "error" not in per_file_result[file_path]:
+                #     self._update_file_status(file_path, "Completed")
                 # Files with errors remain in their current status
 
         # Convert file_path keys to file_name keys for final output
