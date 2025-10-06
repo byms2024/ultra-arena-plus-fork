@@ -93,6 +93,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         "gross_credit_dms",
                         "labour_amount_dms",
                         "part_amount_dms",
+                        "invoice_no",
+                        "invoice_issue_date",
                     ]:
                         if k in extracted:
                             item[f"dms.{k}"] = extracted.get(k)
@@ -106,6 +108,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         "cnpj2",
                         "parts_value",
                         "service_value",
+                        "invoice_no",
+                        "invoice_issue_date",
                     ]:
                         if k in proc:
                             item[f"proc.{k}"] = proc.get(k)
@@ -122,6 +126,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         "cnpj2",
                         "parts_value",
                         "service_value",
+                        "invoice_no",
+                        "invoice_issue_date",
                     ]:
                         if k in proc_norm:
                             item[f"proc.{k}"] = proc_norm.get(k)
@@ -483,6 +489,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             "cnpj2": None,
                             "parts_value": None,
                             "service_value": None,
+                            "invoice_no": None,
+                            "invoice_issue_date": None,
                         }
                         if isinstance(model_output, dict) and model_output != {}:
                             # Helper to pick from multiple possible keys
@@ -501,6 +509,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             normalized["vin"] = pick(model_output, ["collected_VIN", "vin", "VIN", "Chassi"])
                             normalized["cnpj"] = pick(model_output, ["collected_CNPJ", "cnpj", "CNPJ", "CNPJ_1"])
                             normalized["cnpj2"] = pick(model_output, ["collected_CNPJ2", "cnpj2", "CNPJ2", "CNPJ_2"])
+                            normalized["invoice_no"] = pick(model_output, ["invoice_no", "INVOICE_NO", "collected_INVOICE_NO"])
+                            normalized["invoice_issue_date"] = pick(model_output, ["invoice_issue_date", "INVOICE_ISSUE_DATE", "collected_INVOICE_ISSUE_DATE"])
                             if normalized["type"] == "Serviço":
                                 normalized["parts_value"] = None
                                 normalized["service_value"] = pick(model_output, ["collected_service_price", "service_value", "SERVICE_VALUE", "labour_amount", "VALOR_TOTAL"])

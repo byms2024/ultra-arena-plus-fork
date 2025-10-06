@@ -34,6 +34,7 @@ def main():
                         },
                         "processing": {
                             "proc-type": "text_first",
+                            "enable_pdf_metadata": True
                         },
                         "post-processing": {
                             "post-type": "metadata",
@@ -65,6 +66,46 @@ def main():
                         },
                         "processing": {
                             "proc-type": "regex",
+                        },
+                        "post-processing": {
+                            "post-type": "metadata",
+                            "retries": {
+                                "pre_retry": {
+                                    "retry_count": 0
+                                },
+                                "proc_retry": {
+                                    "retry_count": 0
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+
+
+    chain_config = {
+        "chains": {
+                "subchains": [
+                    {
+                        "censor": True,
+                        "metadata_fields": [
+                            "claim_id",
+                            "claim_no",
+                            "vin",
+                            "dealer_cnpj",
+                            "part_amount_dms",
+                            "labour_amount_dms"
+                        ],
+                        "subchain_name": "subchain_text",
+                        "fileNumberPerFile": 1,
+                        "pre-processing": {
+                            "pre-type": "text",
+                            "enable_pdf_metadata": True
+                        },
+                        "processing": {
+                            "proc-type": "text_first",
+                            "enable_pdf_metadata": True
                         },
                         "post-processing": {
                             "post-type": "metadata",

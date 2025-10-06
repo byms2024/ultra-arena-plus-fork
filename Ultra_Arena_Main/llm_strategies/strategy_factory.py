@@ -600,7 +600,7 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                         issues = []
                         # Only compare keys that exist in DMS
                         if dms.get("claim_no") is not None:
-                            if proc_fields.get("claim_no") is None or str(proc_fields["claim_no"]).strip() != str(dms.get("claim_no")).strip():
+                            if proc_fields.get("claim_no") is None or str(proc_fields["claim_no"]).strip() not in str(dms.get("claim_no")).strip():
                                 issues.append("claim_no")
                         if dms.get("vin") is not None:
                             if proc_fields.get("vin") is None or str(proc_fields["vin"]).strip() != str(dms.get("vin")).strip():

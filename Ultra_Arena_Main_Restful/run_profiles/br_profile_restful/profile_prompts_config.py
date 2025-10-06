@@ -56,7 +56,9 @@ JSON_FORMAT_INSTRUCTIONS = """
           "CNPJ_2": null,
           "VALOR_TOTAL": "2.465,73",
           "Chassi": "VIN_FB15C42CAE04A151",
-          "CLAIM_NUMBER": "CLAIM_6047809DCD016B4D"
+          "CLAIM_NUMBER": "CLAIM_6047809DCD016B4D",
+          "INVOICE_NO" : "1860",
+          "INVOICE_ISSUE_DATE" : "2025-01-02"
         },
         {
           "DOC_TYPE": "Serviço",
@@ -64,7 +66,10 @@ JSON_FORMAT_INSTRUCTIONS = """
           "CNPJ_2": "CNPJ_4AR9GD83025MA531",
           "VALOR_TOTAL": "1.023,40",
           "Chassi": null,
-          "CLAIM_NUMBER": "CLAIM_6047809DCD016B4D"
+          "CLAIM_NUMBER": "CLAIM_6047809DCD016B4D",
+          "INVOICE_NO" : "202500001859",
+          "INVOICE_ISSUE_DATE" : "2025-01-01"
+
         }
       ]
       ```
@@ -98,13 +103,17 @@ SIMPLIFIED_JSON_FORMAT_INSTRUCTIONS = """
     "VALOR_TOTAL": "2.465,73",
     "Chassi": "LGXCE4CC7S0023860",
     "CLAIM_NUMBER": "BYDAMEBR0015WCN241200032_01"
+    "INVOICE_NO" : "1859",
+    "INVOICE_ISSUE_DATE" : "2025-01-01"
   },
   {
     "DOC_TYPE": "Serviço",
     "CNPJ_1": "46.621.491/0002-70",
     "VALOR_TOTAL": "1.023,40",
     "Chassi": null,
-    "CLAIM_NUMBER": "BYDAMEBR0015WCN250100042_01"
+    "CLAIM_NUMBER": "BYDAMEBR0015WCN250100042_01",
+    "INVOICE_NO" : "1860",
+    "INVOICE_ISSUE_DATE" : "2025-01-02"
   }
 ]
 * **EXEMPLO INCORRETO:**
@@ -227,7 +236,7 @@ USER_PROMPT = """
     Precisamos **extrair informações cruciais** e formatá-las em um objeto JSON.
 
     **As seguintes chaves DEVEM estar no NÍVEL MAIS ALTO do objeto JSON de saída:**
-    **['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']**
+    **['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER', "INVOICE_NO", "INVOICE_ISSUE_DATE"]**
     Para cada uma dessas chaves, extraia o valor único correspondente mas não invente o valor se ele não puder ser encontrado.
 
     ### **Instruções Específicas para Extração:**
@@ -247,7 +256,9 @@ USER_PROMPT = """
     * **'VALOR_TOTAL'**: O valor único para 'VALOR_TOTAL' é o valor associado a o campo 'VALOR_TOTAL'(sem distinção de maiúsculas e minúsculas) ou 'VALOR_TOTAL DO NOTA' (sem distinção de maiúsculas e minúsculas) e deve ser um número científico brasileiro (ex: 1.234,56). Se o valor original usar ponto como separador decimal (ex: 1234.56 ou 1,234.56), **converta-o para o formato brasileiro com vírgula como separador decimal.**
     * **'Chassi'**: O valor único para 'Chassi' que corresponde aos critérios: **DEVE TER EXATAMENTE 20 CARACTERES** e seguir o formato "VIN_XXXXXXXXXXXXXXXX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
     * **'CLAIM_NUMBER'**: O valor único para 'CLAIM_NUMBER' está localizado no final do arquivo, após a seção 'INFORMAÇÕES COMPLEMENTARES'. Este valor **DEVE TER EXATAMENTE 22 CARACTERES** e seguir o formato "CLAIM_XXXXXXXXXXXXXXXX". 
-    
+    * **'INVOICE_NO'**: O valor único para 'INVOICE_NO' está localizado no início do arquivo, normalmente após o texto 'Nº da NF', 'Nº da NFS'. Este valor **NUNCA** vem depois do 'Número RPS', pois se trata de outro número que **NÃO** desejamos coletar. O número da nota fiscal, que queremos coletar é um número de 0 a 1.000.000, normalmente na casa de 1.000 a 10.000. (ex.: 1980). Este número pode estar acompanhado do ano de emissão da nota fiscal, apresentando um número maior que o esperado, ex.: 202500002031, deve-se extrair os últimos dígitos apresentados, excluindo o ano de emissão.
+    * **'INVOICE_ISSUE_DATE'**: O valor único para 'INVOICE_ISSUE_DATE' está localizado no início do arquivo, normalmente após o texto 'Emitida em' ou semelhante. Este valor **SEMPRE** possui formato de data brasileira, com ''dia'/'mês'/'ano'', no formato "DD/MM/AAAA, onde DD, MM, AAAA representam o dia, mês e ano, respectivamente". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
+
     **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
 
     **Formato de Saída:**
@@ -255,7 +266,7 @@ USER_PROMPT = """
     * O idioma da saída JSON (chaves e valores extraídos) **DEVE ser o Português do Brasil**.
 
     **REGRAS CRÍTICAS PARA AS CHAVES PRINCIPAIS:**
-    As chaves especificadas (['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER']) SÃO OBRIGATÓRIAS e DEVEM SER COLOCADAS DIRETAMENTE NO NÍVEL RAIZ/TOPO DO JSON. Elas não devem estar aninhadas.
+    As chaves especificadas (['DOC_TYPE', 'CNPJ_1', 'CNPJ_2', 'VALOR_TOTAL', 'Chassi', 'CLAIM_NUMBER', "INVOICE_NO", "INVOICE_ISSUE_DATE"]) SÃO OBRIGATÓRIAS e DEVEM SER COLOCADAS DIRETAMENTE NO NÍVEL RAIZ/TOPO DO JSON. Elas não devem estar aninhadas.
     
     **VALORES NULOS:**
     Se uma informação não puder ser encontrada no documento, use `null` para esse campo. É melhor retornar `null` do que inventar um valor.  

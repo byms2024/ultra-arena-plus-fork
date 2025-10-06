@@ -8,6 +8,8 @@ like '/DmsData' which may contain a JSON string with domain-specific data.
 from typing import Dict, Any
 import json
 import logging
+import re
+from pathlib import Path
 
 
 def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
@@ -62,6 +64,23 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
 
     except Exception as e:
         logging.error(f"Error reading PDF metadata from {pdf_path}: {e}")
+
+    # Derive invoice number from file name pattern like '...NF1234...' if present
+    try:
+        file_name = Path(pdf_path).name
+        document_info["remote_file_name"] = file_name
+        m = re.search(r"NF\s*-?\s*(\d{1,7})", file_name, re.IGNORECASE)
+        if m:
+            try:
+                val = int(m.group(1))
+                if 1 <= val <= 1_000_000:
+                    # Store under dms_data for downstream mapping; don't overwrite if exists
+                    if "invoice_no" not in dms_data or not dms_data.get("invoice_no"):
+                        dms_data["invoice_no"] = str(val)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     return {"document_info": document_info, "dms_data": dms_data}
 

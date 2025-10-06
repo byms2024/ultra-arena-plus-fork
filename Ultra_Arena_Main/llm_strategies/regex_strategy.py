@@ -466,6 +466,86 @@ class FieldExtractor:
             return None
         return cents if _find_expected_value_in_text(text or "", cents) else None
 
+    @staticmethod
+    def extract_invoice_no_from_filename(filename: str) -> Optional[str]:
+        try:
+            m = re.search(r"NF\s*-?\s*(\d{1,7})", filename or "", re.IGNORECASE)
+            if not m:
+                return None
+            num = (m.group(1) or "").strip()
+            if not num.isdigit():
+                return None
+            val = int(num)
+            if 1 <= val <= 1_000_000:
+                return str(val)
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def extract_invoice_no(text: str) -> Optional[str]:
+        if not text:
+            return None
+        head = (text or "")[:2000]
+
+        # Collect RPS numbers to exclude
+        rps_numbers: set[str] = set()
+        for m in re.finditer(r"(?:N[úu]mero\s*RPS|RPS\s*N[ºo]?|N[ºo]\s*RPS|No\s*RPS)\s*[:\-]?\s*(\d{1,10})", head, re.IGNORECASE):
+            try:
+                rps_numbers.add(m.group(1))
+            except Exception:
+                continue
+
+        # Candidate patterns for invoice number (NF / NFS labels)
+        patterns = [
+            r"(?:N[ºo]\s*(?:da\s*)?NFS?)\s*[:\-]?\s*(\d{1,7})",
+            r"(?:N[úu]mero\s*(?:da\s*)?NF(?:S)?|N[úu]mero\s*(?:da\s*)?NFS)\s*[:\-]?\s*(\d{1,7})",
+            r"NF(?:S)?\s*N[ºo]?\s*[:\-]?\s*(\d{1,7})",
+        ]
+
+        for pat in patterns:
+            try:
+                for m in re.finditer(pat, head, re.IGNORECASE):
+                    num = (m.group(1) or "").strip()
+                    if not num or num in rps_numbers:
+                        continue
+                    if not num.isdigit():
+                        continue
+                    val = int(num)
+                    if 1 <= val <= 1_000_000:
+                        # Ensure local context does not mention RPS
+                        start = max(m.start() - 30, 0)
+                        ctx = head[start:m.start()]
+                        if re.search(r"RPS", ctx, re.IGNORECASE):
+                            continue
+                        return num
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def extract_invoice_issue_date(text: str) -> Optional[str]:
+        if not text:
+            return None
+        head = (text or "")[:2000]
+        date_pat = r"(\d{2}/\d{2}/\d{4})"
+        triggers = [
+            r"Emitida\s+em",
+            r"Data\s+de\s+Emiss[aã]o",
+            r"Emiss[aã]o",
+        ]
+        for trig in triggers:
+            try:
+                pat = re.compile(trig + r"\s*[:\-]?\s*" + date_pat, re.IGNORECASE)
+                m = pat.search(head)
+                if m:
+                    return m.group(1)
+            except Exception:
+                continue
+        # Fallback: first date near top of document
+        m = re.search(date_pat, head)
+        return m.group(1) if m else None
+
 
 # =========================
 # Public API helpers
@@ -690,6 +770,8 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "part_amount_dms": dms.get("part_amount_dms"),
                     "dms_file_id": dms.get("file_id"),
                     "dms_embedded_at": dms.get("embedded_at"),
+                    "invoice_no_dms": dms.get("invoice_no"),
+                    "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name"),
                 }
                 # Store DMS data in passthrough for visibility in logs
                 if any(v is not None for v in mapped.values()):
@@ -701,6 +783,8 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "service_price": mapped.get("labour_amount_dms"),
                     "parts_price": mapped.get("part_amount_dms"),
                     "cnpj": mapped.get("cnpj1"),
+                    "invoice_no": mapped.get("invoice_no_dms"),
+                    "remote_file_name": mapped.get("remote_file_name"),
                 }
             # Optionally keep raw document info
             if self.config.get("store_raw_pdf_info", False):
@@ -901,6 +985,8 @@ class RegexProcessingStrategy(LinkStrategy):
             "class",
             "collected_service_price",
             "collected_parts_price",
+            "collected_INVOICE_NO",
+            "collected_INVOICE_ISSUE_DATE",
             "collected_CNPJ",
             "collected_CNPJ2",
             "collected_VIN",
@@ -918,6 +1004,8 @@ class RegexProcessingStrategy(LinkStrategy):
                         "class": cls,
                         "collected_service_price": "",
                         "collected_parts_price": "",
+                        "collected_INVOICE_NO": "",
+                        "collected_INVOICE_ISSUE_DATE": "",
                         "collected_CNPJ": "",
                         "collected_CNPJ2": "",
                         "collected_VIN": "",
@@ -946,6 +1034,8 @@ class RegexProcessingStrategy(LinkStrategy):
                     "class": cls,
                     "collected_service_price": "",
                     "collected_parts_price": "",
+                    "collected_INVOICE_NO": "",
+                    "collected_INVOICE_ISSUE_DATE": "",
                     "collected_CNPJ": "",
                     "collected_CNPJ2": "",
                     "collected_VIN": "",
@@ -1006,6 +1096,19 @@ class RegexProcessingStrategy(LinkStrategy):
 
                     row["collected_CNPJ2"] = FieldExtractor.extract_cnpj2_blind(text)
 
+                    # New: attempt invoice fields extraction
+                    inv_no = FieldExtractor.extract_invoice_no(text)
+                    if not inv_no and isinstance(answers, dict):
+                        # fallback to filename-derived invoice number when present in metadata read
+                        inv_no = FieldExtractor.extract_invoice_no_from_filename(
+                            (answers.get("remote_file_name") or "")
+                        ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
+                    if inv_no:
+                        row["collected_INVOICE_NO"] = inv_no
+                    inv_date = FieldExtractor.extract_invoice_issue_date(text)
+                    if inv_date:
+                        row["collected_INVOICE_ISSUE_DATE"] = inv_date
+
                     if row["collected_service_price"]:
                         found_service_price_any = True
 
@@ -1055,6 +1158,18 @@ class RegexProcessingStrategy(LinkStrategy):
                     if row["collected_parts_price"]:
                         found_parts_price_any = True
 
+                    # New: attempt invoice fields extraction
+                    inv_no = FieldExtractor.extract_invoice_no(text)
+                    if not inv_no and isinstance(answers, dict):
+                        inv_no = FieldExtractor.extract_invoice_no_from_filename(
+                            (answers.get("remote_file_name") or "")
+                        ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
+                    if inv_no:
+                        row["collected_INVOICE_NO"] = inv_no
+                    inv_date = FieldExtractor.extract_invoice_issue_date(text)
+                    if inv_date:
+                        row["collected_INVOICE_ISSUE_DATE"] = inv_date
+
                 row["search_mode"] = "answers" if used_answers_any else "blind"
                 temp_rows[f] = row
             for f in p.files:
@@ -1072,6 +1187,8 @@ class RegexProcessingStrategy(LinkStrategy):
                         "class": "Outros",
                         "collected_service_price": "",
                         "collected_parts_price": "",
+                        "collected_INVOICE_NO": "",
+                        "collected_INVOICE_ISSUE_DATE": "",
                         "collected_CNPJ": "",
                         "collected_CNPJ2": "",
                         "collected_VIN": "",
@@ -1103,6 +1220,18 @@ class RegexProcessingStrategy(LinkStrategy):
                         cands = FieldExtractor.extract_price_candidates_cents(text)
                         if cands:
                             row["collected_parts_price"] = "0,0"
+
+                # New: attempt invoice fields extraction from header for 'Outros' too
+                inv_no = FieldExtractor.extract_invoice_no(text)
+                if not inv_no and isinstance(answers, dict):
+                    inv_no = FieldExtractor.extract_invoice_no_from_filename(
+                        (answers.get("remote_file_name") or "")
+                    ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
+                if inv_no:
+                    row["collected_INVOICE_NO"] = inv_no
+                inv_date = FieldExtractor.extract_invoice_issue_date(text)
+                if inv_date:
+                    row["collected_INVOICE_ISSUE_DATE"] = inv_date
 
                 if used_answers_any:
                     row["search_mode"] = "answers"

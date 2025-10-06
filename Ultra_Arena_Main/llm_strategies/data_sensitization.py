@@ -63,12 +63,13 @@ NFE_REGEXES: list[re.Pattern[str]] = [
 ]
 
 # Claim number patterns: prefer underscore form; fallback to no-underscore
+# Require 'WCN' in the body (claim indicator) and exclude 'WRO' (repair order)
 CLAIM_NO_REGEX_STRICT: re.Pattern[str] = re.compile(
-    r"BYDAMEBR(?P<body>[a-z0-9]{8,30})_(?P<suffix>\d{2})\b",
+    r"BYDAMEBR(?P<body>(?=[A-Za-z0-9]*WCN)(?![A-Za-z0-9]*WRO)[A-Za-z0-9]{8,30})_(?P<suffix>\d{2})",
     re.IGNORECASE,
 )
 CLAIM_NO_REGEX_FALLBACK: re.Pattern[str] = re.compile(
-    r"BYDAMEBR(?P<body>[a-z0-9]{8,30})(?P<suffix>\d{2})\b",
+    r"BYDAMEBR(?P<body>(?=[A-Za-z0-9]*WCN)(?![A-Za-z0-9]*WRO)[A-Za-z0-9]{8,30})(?P<suffix>\d{2})(?!_)",
     re.IGNORECASE,
 )
 
