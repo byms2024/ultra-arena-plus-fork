@@ -594,6 +594,8 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             "claim_no": pick(proc_norm, ["claim_no"]) or pick(proc_raw, ["claim_no", "CLAIM_NO", "collected_ClaimNO", "CLAIM_NUMBER"]),
                             "parts_value": pick(proc_norm, ["parts_value"]) or pick(proc_raw, ["parts_value", "PARTS_VALUE", "PART_AMOUNT", "part_amount", "collected_parts_price"]),
                             "service_value": pick(proc_norm, ["service_value"]) or pick(proc_raw, ["service_value", "SERVICE_VALUE", "LABOUR_AMOUNT", "labour_amount", "collected_service_price"]),
+                            "invoice_no": pick(proc_norm, ["invoice_no"]) or pick(proc_raw, ["invoice_number", "INVOICE_NO", "collected_INVOICE_NO", "invoice_no"]),
+                            "invoice_date": pick(proc_norm, ["invoice_date"]) or pick(proc_raw, ["invoice_date", "INVOICE_ISSUE_DATE", "collected_INVOICE_ISSUE_DATE"]),
                         }
 
                         # Compare with DMS metadata (from pre-processing)
@@ -618,6 +620,11 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             proc_val = str(proc_fields.get("service_value")).strip().replace(",", "").replace(".", "")
                             if proc_fields.get("service_value") is None or dms_val not in proc_val:
                                 issues.append("labour_amount_dms")
+                        if dms.get("invoice_no") is not None:
+                            dms_inv_no = str(dms.get("invoice_no")).strip()
+                            proc_inv_no = str(proc_fields.get("invoice_no")).strip() if proc_fields.get("invoice_number") is not None else None
+                            if proc_inv_no is None or dms_inv_no != proc_inv_no:
+                                issues.append("invoice_no")
 
                         if issues and proc_fields.get("type") != "Outros":
                             # Unmatched: record details but don't modify extracted_data
