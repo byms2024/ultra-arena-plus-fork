@@ -93,8 +93,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         "gross_credit_dms",
                         "labour_amount_dms",
                         "part_amount_dms",
-                        "invoice_no",
-                        "invoice_issue_date",
+                        "invoice_no_dms"
                     ]:
                         if k in extracted:
                             item[f"dms.{k}"] = extracted.get(k)
