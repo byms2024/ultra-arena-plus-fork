@@ -163,6 +163,8 @@ SENSITIVE_USER_PROMPT = """
     * **'VALOR_TOTAL'**: O valor único para 'VALOR_TOTAL' é o valor associado a o campo 'VALOR_TOTAL'(sem distinção de maiúsculas e minúsculas) ou 'VALOR_TOTAL DO NOTA' (sem distinção de maiúsculas e minúsculas) e deve ser um número científico brasileiro (ex: 1.234,56). Se o valor original usar ponto como separador decimal (ex: 1234.56 ou 1,234.56), **converta-o para o formato brasileiro com vírgula como separador decimal.**
      * **'Chassi'**: O valor único para 'Chassi' **SEMPRE** começa com 'L' e **DEVE TER EXATAMENTE 17 CARACTERES** (número VIN padrão). **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
     * **'CLAIM_NUMBER'**: O valor único para 'CLAIM_NUMBER' está localizado no final do arquivo, após a seção 'INFORMAÇÕES COMPLEMENTARES'. Este valor **SEMPRE** começa com 'BYDAMEBR' e **DEVE TER 28-30 CARACTERES**, no formato "BYDAMEBRXXXXXXXXXXXXXXXXX_XX". 
+    * **'INVOICE_NO'**: O valor único para 'INVOICE_NO' está localizado no início do arquivo, normalmente após o texto 'Nº da NF', 'Nº da NFS'. Este valor **NUNCA** vem depois do 'Número RPS', pois se trata de outro número que **NÃO** desejamos coletar. O número da nota fiscal, que queremos coletar é um número inteiro, normalmente na casa de 1.000 a 10.000. (ex.: 1980), ele pode ser precedido pelo ano da nota, concatenando os dois números. ex.: 2025000000980.
+    * **'INVOICE_ISSUE_DATE'**: O valor único para 'INVOICE_ISSUE_DATE' está localizado no início do arquivo, normalmente após o texto 'Emitida em' ou semelhante. Este valor **SEMPRE** possui formato de data brasileira, com ''dia'/'mês'/'ano'', no formato "DD/MM/AAAA, onde DD, MM, AAAA representam o dia, mês e ano, respectivamente". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
     
     **⚠️ CRÍTICO PARA CLAIM_NUMBER:**
     * **SEMPRE** inclua o sufixo "_XX" (ex: "_01", "_02", etc.) no final do CLAIM_NUMBER
@@ -198,7 +200,9 @@ Extraia estas 5 informações e formate em JSON:
   "CNPJ_1": "primeiro CNPJ no formato XX.XXX.XXX/XXXX-XX",
   "VALOR_TOTAL": "valor total no formato brasileiro com vírgula",
   "Chassi": "código VIN de 17 caracteres começando com L",
-  "CLAIM_NUMBER": "código completo começando com BYDAMEBR"
+  "CLAIM_NUMBER": "código completo começando com BYDAMEBR",
+  "INVOICE_NO": "número da nota fiscal inteiro, normalmente na casa de 1.000 a 10.000. (ex.: 1980), ele pode ser precedido pelo ano da nota, concatenando os dois números. ex.: 2025000000980.",
+  "INVOICE_ISSUE_DATE": "data de emissão da nota fiscal no formato brasileiro, com ''dia'/'mês'/'ano'', no formato "DD/MM/AAAA, onde DD, MM, AAAA representam o dia, mês e ano, respectivamente".
 }
 
 **REGRAS ESPECÍFICAS:**
@@ -256,7 +260,7 @@ USER_PROMPT = """
     * **'VALOR_TOTAL'**: O valor único para 'VALOR_TOTAL' é o valor associado a o campo 'VALOR_TOTAL'(sem distinção de maiúsculas e minúsculas) ou 'VALOR_TOTAL DO NOTA' (sem distinção de maiúsculas e minúsculas) e deve ser um número científico brasileiro (ex: 1.234,56). Se o valor original usar ponto como separador decimal (ex: 1234.56 ou 1,234.56), **converta-o para o formato brasileiro com vírgula como separador decimal.**
     * **'Chassi'**: O valor único para 'Chassi' que corresponde aos critérios: **DEVE TER EXATAMENTE 20 CARACTERES** e seguir o formato "VIN_XXXXXXXXXXXXXXXX". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
     * **'CLAIM_NUMBER'**: O valor único para 'CLAIM_NUMBER' está localizado no final do arquivo, após a seção 'INFORMAÇÕES COMPLEMENTARES'. Este valor **DEVE TER EXATAMENTE 22 CARACTERES** e seguir o formato "CLAIM_XXXXXXXXXXXXXXXX". 
-    * **'INVOICE_NO'**: O valor único para 'INVOICE_NO' está localizado no início do arquivo, normalmente após o texto 'Nº da NF', 'Nº da NFS'. Este valor **NUNCA** vem depois do 'Número RPS', pois se trata de outro número que **NÃO** desejamos coletar. O número da nota fiscal, que queremos coletar é um número de 0 a 1.000.000, normalmente na casa de 1.000 a 10.000. (ex.: 1980). Este número pode estar acompanhado do ano de emissão da nota fiscal, apresentando um número maior que o esperado, ex.: 202500002031, deve-se extrair os últimos dígitos apresentados, excluindo o ano de emissão.
+    * **'INVOICE_NO'**: O valor único para 'INVOICE_NO' está localizado no início do arquivo, normalmente após o texto 'Nº da NF', 'Nº da NFS'. Este valor **NUNCA** vem depois do 'Número RPS', pois se trata de outro número que **NÃO** desejamos coletar. O número da nota fiscal, que queremos coletar é um número inteiro, normalmente na casa de 1.000 a 10.000. (ex.: 1980), ele pode ser precedido pelo ano da nota, concatenando os dois números. ex.: 2025000000980.
     * **'INVOICE_ISSUE_DATE'**: O valor único para 'INVOICE_ISSUE_DATE' está localizado no início do arquivo, normalmente após o texto 'Emitida em' ou semelhante. Este valor **SEMPRE** possui formato de data brasileira, com ''dia'/'mês'/'ano'', no formato "DD/MM/AAAA, onde DD, MM, AAAA representam o dia, mês e ano, respectivamente". **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.
 
     **IMPORTANTE**: Extraia APENAS o valor que está REALMENTE presente no documento. NÃO invente ou copie valores de exemplos.

@@ -685,6 +685,28 @@ def _collect_from_files(
 
         return data, used_answers
 
+def _invoice_no_in_text(inv_no: str, text: str) -> bool:
+    """
+    Checks if the given invoice number (inv_no) appears in the text.
+    Only matches if inv_no is a non-empty string of digits and is found as a whole number in the text.
+    """
+    distance = 15
+    if not inv_no or not inv_no.isdigit():
+        return False
+    # Look for inv_no as a whole number (not part of a larger number)
+    pattern = r"\b{}\b".format(re.escape(inv_no))
+    text_to_search = text or ""
+    # Find all matches of the pattern
+    for match in re.finditer(pattern, text_to_search):
+        start, end = match.start(), match.end()
+        # Check for "RPS" within 20 characters before or after the match
+        before = text_to_search[max(0, start-distance):start]
+        after = text_to_search[end:end+distance]
+        if re.search(r"RPS", before, re.IGNORECASE) or re.search(r"RPS", after, re.IGNORECASE):
+            continue  # Skip this match if "RPS" is nearby
+        return inv_no
+    return ""
+
 
 class RegexPreProcessingStrategy(LinkStrategy):
     def __init__(self, config: Dict[str, Any] | None = None, streaming: bool = False):
@@ -1114,6 +1136,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         inv_no = FieldExtractor.extract_invoice_no_from_filename(
                             (answers.get("remote_file_name") or "")
                         ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
+                        inv_no = _invoice_no_in_text(inv_no, text)
                     if inv_no:
                         row["collected_INVOICE_NO"] = inv_no
                     inv_date = FieldExtractor.extract_invoice_issue_date(text)
