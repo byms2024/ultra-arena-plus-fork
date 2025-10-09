@@ -71,13 +71,16 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
         if not remote_file_name:
             remote_file_name = ""
         document_info["remote_file_name"] = remote_file_name
+        dms_data["invoice_no"] = remote_file_name
         # More flexible regex: allow optional spaces and underscores between NF, the number, and nota
-        m = re.search(r"N[\s_]*F[\s_]*(\d{1,10})[\s_]*nota", remote_file_name, re.IGNORECASE)
+        m = re.search(r"(?:N[\s_]*)?F[\s_]*(\d{1,10})[\s_]*nota", remote_file_name, re.IGNORECASE)
         if m:
             try:
                 val = int(m.group(1))
                 if "invoice_no" not in dms_data or not dms_data.get("invoice_no"):
                     dms_data["invoice_no"] = str(val)
+                else:
+                    dms_data["invoice_no"] = ""
             except Exception:
                 pass
     except Exception:
