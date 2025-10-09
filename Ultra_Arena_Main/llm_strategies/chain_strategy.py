@@ -140,10 +140,21 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     summary.append({"error": "summary_failed_unknown_entry"})
         return summary
 
-    def _log_passthrough(self, where: str, passthrough: Dict[str, Any]) -> None:
+    def _log_passthrough(self, where: str, passthrough: Dict[str, Any], file: Optional[str] = None) -> None:
         try:
-            snapshot = self._make_passthrough_summary(passthrough)
-            logging.info(f"🔎 Passthrough snapshot [{where}]: {json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True)}")
+            full_snapshot = self._make_passthrough_summary(passthrough)
+            if file:
+                # If a file is specified, filter the full snapshot.
+                snapshot_to_log = [entry for entry in full_snapshot if file in entry.get("file") ]
+                log_message = f"🔎 Passthrough snapshot for file '{file}' [{where}]"
+            else:
+                # Otherwise, use the full snapshot.
+                snapshot_to_log = full_snapshot
+                log_message = f"🔎 Passthrough snapshot [{where}]"
+
+            # Step 3: Log the result with the appropriate message.
+            logging.info(f"{log_message}: {json.dumps(snapshot_to_log, ensure_ascii=False, indent=2, sort_keys=True)}")
+
         except Exception as e:
             logging.info(f"🔎 Passthrough snapshot [{where}] failed: {e}")
 
@@ -526,7 +537,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             short_name = Path(file_path).name
                         except Exception:
                             short_name = str(file_path)
-                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough)
+                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough,str(file_path))
                     except Exception:
                         pass
                 except Exception as e:
