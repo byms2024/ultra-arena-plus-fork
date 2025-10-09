@@ -10,6 +10,7 @@ from collections import Counter
 import re
 import json
 import inspect
+import os
 
 # from common.text_extractor import TextExtractor
 
@@ -140,19 +141,33 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     summary.append({"error": "summary_failed_unknown_entry"})
         return summary
 
-    def _log_passthrough(self, where: str, passthrough: Dict[str, Any], file: Optional[str] = None) -> None:
+    def _log_passthrough(self, where: str, passthrough: Dict[str, Any], files: Optional[List[str]] = None) -> None:
+        """
+        Logs a summary of the passthrough object.
+
+        Args:
+            where: A string indicating the context/location of the log.
+            passthrough: The passthrough data dictionary.
+            file: If specified, only the summaries for file names in this list will be logged.
+        """
         try:
+            files = [os.path.basename(f) for f in files]
+
             full_snapshot = self._make_passthrough_summary(passthrough)
-            if file:
-                # If a file is specified, filter the full snapshot.
-                snapshot_to_log = [entry for entry in full_snapshot if file in entry.get("file") ]
-                log_message = f"🔎 Passthrough snapshot for file '{file}' [{where}]"
+
+            # Check if a non-empty list of files was provided
+            if files:
+                # Filter to include entries whose filename is in the 'file' list
+                snapshot_to_log = [
+                    entry for entry in full_snapshot 
+                    if (os.path.basename(entry.get("file")) in files)
+                ]
+                log_message = f"🔎 Passthrough snapshot for remaining {len(files)} files: [{where}]"
             else:
-                # Otherwise, use the full snapshot.
+                # Otherwise, use the full snapshot
                 snapshot_to_log = full_snapshot
                 log_message = f"🔎 Passthrough snapshot [{where}]"
 
-            # Step 3: Log the result with the appropriate message.
             logging.info(f"{log_message}: {json.dumps(snapshot_to_log, ensure_ascii=False, indent=2, sort_keys=True)}")
 
         except Exception as e:
@@ -354,6 +369,9 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         """
         
         current_files = file_group
+        logging.info(f'⭕⭕ Subchain Processing Files ⭕⭕')
+        logging.info(current_files)
+
         subchain_results = {}
         
         # Extract common subchain-level attributes as variables
@@ -410,7 +428,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             "answers": answers,
                         }
                     }
-            self._log_passthrough(f"after_pre:{subchain_name}", passthrough)
+            #self._log_passthrough(f"after_pre:{subchain_name}", passthrough)
                 
         except Exception as e:
             logging.error(f"❌ Pre-processing failed for subchain '{subchain_name}': {e}")
@@ -446,7 +464,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             if callable(_attach):
                 _attach(passthrough)
             
-            self._log_passthrough(f"before_processing:{subchain_name}", passthrough)
+            self._log_passthrough(f"before_processing:{subchain_name}", passthrough, current_files)
+
             extra_kwargs: Dict[str, Any] = {}
             try:
                 sig = inspect.signature(processing_strategy.process_file_group)  # type: ignore[attr-defined]
@@ -570,7 +589,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             short_name = Path(file_path).name
                         except Exception:
                             short_name = str(file_path)
-                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough,str(file_path))
+                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough,[str(file_path)])
                     except Exception:
                         pass
                 except Exception as e:
@@ -617,8 +636,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     subchain_results[file_path]["processing"] = {"error": f"Processing failed: {e}"}
                     subchain_results[file_path]["error"] = f"Processing failed: {e}"
                 failed_files.append(file_path)
-        finally:
-            self._log_passthrough(f"after_processing:{subchain_name}", passthrough)
+        # finally:
+        #     self._log_passthrough(f"full after_processing:{subchain_name}", passthrough)
         
         # 3. Post-processing link (only for successful files)
         post_config = subchain_config["post-processing"]
@@ -643,7 +662,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 if callable(_attach):
                     _attach(passthrough)
                 
-                self._log_passthrough(f"before_post:{subchain_name}", passthrough)
+                self._log_passthrough(f"before_post:{subchain_name}", passthrough, current_files)
                 post_results, post_stats, _ = post_strategy.process_file_group(
                     config_manager=config_manager,
                     file_group=successful_files,
@@ -663,7 +682,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 for file_path, result in post_results:
                     if file_path in subchain_results:
                         subchain_results[file_path]["post_processing"] = result
-                self._log_passthrough(f"after_post:{subchain_name}", passthrough)
+                #self._log_passthrough(f"after_post:{subchain_name}", passthrough)
                         
             except Exception as e:
                 logging.error(f"❌ Post-processing failed for subchain '{subchain_name}': {e}")
@@ -688,7 +707,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             logging.info(f"Successful file: {file_path}")
 
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
-        self._log_passthrough(f"end_subchain:{subchain_name}", passthrough)
+        self._log_passthrough(f"end_subchain:{subchain_name}", passthrough, current_files)
         
         return successful_results, failed_files
 
