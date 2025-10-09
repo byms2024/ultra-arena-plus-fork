@@ -310,6 +310,39 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 logging.debug(f"📊 Updated status for {file_path}: {status}")
                 break
 
+    def _merge_non_empty(self, original: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge updates into original, overwriting only with non-empty values.
+
+        Rules:
+        - Scalars: overwrite if value is not None and (if string) not empty after strip
+        - Dicts: recurse
+        - Lists: overwrite only if list is non-empty
+        """
+        try:
+            if not isinstance(original, dict) or not isinstance(updates, dict):
+                # For non-dicts, prefer updates if non-empty; else keep original
+                if isinstance(updates, str):
+                    return updates if updates.strip() != "" else original
+                return updates if updates is not None else original
+            merged: Dict[str, Any] = dict(original)
+            for key, value in updates.items():
+                if isinstance(value, dict):
+                    merged[key] = self._merge_non_empty(original.get(key, {}), value)
+                elif isinstance(value, list):
+                    if value is not None and len(value) > 0:
+                        merged[key] = value
+                else:
+                    if isinstance(value, str):
+                        if value.strip() != "":
+                            merged[key] = value
+                    else:
+                        if value is not None:
+                            merged[key] = value
+            return merged
+        except Exception:
+            # If anything goes wrong, fall back to updates-as-is
+            return updates if updates is not None and (not isinstance(updates, str) or updates.strip() != "") else original
+
     def _execute_subchain(self, subchain_name: str, subchain_config: Dict[str, Any], 
                          file_group: List[str], config_manager, group_index: int, group_id: str,
                          system_prompt: Optional[str], user_prompt: str, agg_stats: Dict[str, Any],
@@ -641,7 +674,13 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
 
         for file_path, results in subchain_results.items():
             if "error" not in results:
-                successful_results[file_path] = results
+                # Only overwrite existing fields with non-empty values
+                if file_path in successful_results:
+                    successful_results[file_path] = self._merge_non_empty(
+                        successful_results[file_path], results
+                    )
+                else:
+                    successful_results[file_path] = results
             else:
                 logging.info(f"File '{file_path}' has error: {results.get('error')}")
         
