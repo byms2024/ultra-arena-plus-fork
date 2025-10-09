@@ -620,11 +620,8 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             proc_val = str(proc_fields.get("service_value")).strip().replace(",", "").replace(".", "")
                             if proc_fields.get("service_value") is None or dms_val not in proc_val:
                                 issues.append("labour_amount_dms")
-                        if proc_fields.get("invoice_no") is None:
-                            dms_inv_no = str(dms.get("invoice_no")).strip()
-                            proc_inv_no = str(proc_fields.get("invoice_no")).strip() if proc_fields.get("invoice_number") is not None else None
-                            if proc_inv_no is None or dms_inv_no != proc_inv_no:
-                                issues.append("invoice_no")
+                        if proc_fields.get("invoice_no") is None or "":
+                            issues.append("invoice_no")
 
                         if issues and proc_fields.get("type") != "Outros":
                             # Unmatched: record details but don't modify extracted_data
