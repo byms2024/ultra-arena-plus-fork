@@ -485,11 +485,14 @@ class FieldExtractor:
     def extract_invoice_no(text: str) -> Optional[str]:
         if not text:
             return None
-        head = (text or "")[:2000]
+        head = (text or "")[:3000]
 
         # Collect RPS numbers to exclude
         rps_numbers: set[str] = set()
-        for m in re.finditer(r"(?:N[úu]mero\s*RPS|RPS\s*N[ºo]?|N[ºo]\s*RPS|No\s*RPS)\s*[:\-]?\s*(\d{1,10})", head, re.IGNORECASE):
+        # Broader match for "Número RPS", "RPS", "NRPS", "Nº RPS", "No RPS", etc.
+        for m in re.finditer(
+            r"(?:N[úu]mero\s*RPS|N[ºo]?\s*RPS|No\s*RPS|NRPS|RPS)\s*[:\-]?\s*(\d{1,10})", head, re.IGNORECASE
+        ):
             try:
                 rps_numbers.add(m.group(1))
             except Exception:
@@ -525,6 +528,8 @@ class FieldExtractor:
                     start = max(m.start() - 15, 0)
                     ctx = head[start:m.start()]
                     if re.search(r"RPS", ctx, re.IGNORECASE):
+                        continue
+                    if int(num) <= 1:
                         continue
                     return num
             except Exception:

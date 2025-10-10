@@ -346,6 +346,8 @@ class TextPreProcessingStrategy(LinkStrategy):
                         "part_amount_dms": dms.get("part_amount_dms"),
                         "dms_file_id": dms.get("file_id"),
                         "dms_embedded_at": dms.get("embedded_at"),
+                        "invoice_no": dms.get("invoice_no"),
+                        "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name"),
                     }
                     self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
                 # Optionally keep raw document info
