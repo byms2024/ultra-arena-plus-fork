@@ -704,11 +704,12 @@ def _invoice_no_in_text(inv_no: str, text: str) -> bool:
     Checks if the given invoice number (inv_no) appears in the text.
     Only matches if inv_no is a non-empty string of digits and is found as a whole number in the text.
     """
-    distance = 15
+    distance = 12
     if not inv_no or not inv_no.isdigit():
         return False
     # Look for inv_no as a whole number (not part of a larger number)
-    pattern = r"\b{}\b".format(re.escape(inv_no))
+    # Match when inv_no is not preceded or followed by a digit (handles " aaaa1234 ", rejects "12341234")
+    pattern = r"(?<!\d){}(?!\d)".format(re.escape(inv_no))
     text_to_search = text or ""
     # Find all matches of the pattern
     for match in re.finditer(pattern, text_to_search):
@@ -1210,6 +1211,7 @@ class RegexProcessingStrategy(LinkStrategy):
                         found_parts_price_any = True
 
                     # fallback to filename-derived invoice number when present in metadata read
+                    inv_log_done = False
                     if isinstance(answers, dict):
                         inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
                             (answers.get("remote_file_name") or "")
@@ -1222,7 +1224,6 @@ class RegexProcessingStrategy(LinkStrategy):
                                 inv_log_done = True
                     # New: attempt invoice fields extraction (with logging markers)
                     if not inv_no:
-                        inv_log_done = False
                         inv_no = FieldExtractor.extract_invoice_no(text)
                         row["collected_INVOICE_NO"] = inv_no
                         if not inv_log_done:
@@ -1287,29 +1288,8 @@ class RegexProcessingStrategy(LinkStrategy):
                         if cands:
                             row["collected_parts_price"] = "0,0"
 
-                # New: attempt invoice fields extraction from header for 'Outros' too (with logging markers)
                 inv_log_done = False
-                inv_no = FieldExtractor.extract_invoice_no(text)
-                if inv_no:
-                    row["collected_INVOICE_NO"] = inv_no
-                    if not inv_log_done:
-                        logging.info(f"[inv_no_extract][found_not_in_fn] file={f.name} cls={file_classes} source=content inv_no={inv_no}")
-                        inv_log_done = True
-                if not inv_no and isinstance(answers, dict):
-                    inv_no = FieldExtractor.extract_invoice_no_from_filename(
-                        (answers.get("remote_file_name") or "")
-                    ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
-                    if inv_no:
-                        row["collected_INVOICE_NO"] = inv_no
-                        if not inv_log_done:
-                            logging.info(f"[inv_no_extract][found_in_fn] file={f.name} cls={file_classes} source=filename inv_no={inv_no}")
-                            inv_log_done = True
-                if not row["collected_INVOICE_NO"] and not inv_log_done:
-                    logging.info(f"[inv_no_extract][not_found] file={f.name} cls={file_classes} reason=no_match_in_text_and_filename")
-                    inv_log_done = True
-                inv_date = FieldExtractor.extract_invoice_issue_date(text)
-                if inv_date:
-                    row["collected_INVOICE_ISSUE_DATE"] = inv_date
+
 
                 if used_answers_any:
                     row["search_mode"] = "answers"
