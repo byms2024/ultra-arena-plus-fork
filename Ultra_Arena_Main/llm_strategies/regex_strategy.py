@@ -710,7 +710,8 @@ def _invoice_no_in_text(inv_no: str, text: str) -> bool:
     # Look for inv_no as a whole number (not part of a larger number)
     # Match when inv_no is not preceded or followed by a digit (handles " aaaa1234 ", rejects "12341234")
     pattern = r"(?<!\d){}(?!\d)".format(re.escape(inv_no))
-    text_to_search = text or ""
+    # Only keep whitespace and numbers in the text for searching invoice number
+    text_to_search = re.sub(r"[^\d\s]", "", text or "")
     # Find all matches of the pattern
     for match in re.finditer(pattern, text_to_search):
         start, end = match.start(), match.end()
@@ -1138,19 +1139,18 @@ class RegexProcessingStrategy(LinkStrategy):
                         found_service_price_any = True
                     
                     # fallback to filename-derived invoice number when present in metadata read
-                    if isinstance(answers, dict):
-                        inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
-                            (answers.get("remote_file_name") or "")
-                        ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
-                        inv_no = _invoice_no_in_text(inv_no_target, text) if inv_no_target else None
-                        if inv_no:
-                            row["collected_INVOICE_NO"] = inv_no
-                            if not inv_log_done:
-                                logging.info(f"[inv_no_extract][found_in_fn] file={f.name} cls={cls} source=filename inv_no={inv_no}")
-                                inv_log_done = True
+                    inv_log_done = False
+                    inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
+                        (answers.get("remote_file_name") or "")
+                    )
+                    inv_no = _invoice_no_in_text(inv_no_target, text) if inv_no_target else None
+                    if inv_no:
+                        row["collected_INVOICE_NO"] = inv_no
+                        if not inv_log_done:
+                            logging.info(f"[inv_no_extract][found_in_fn] file={f.name} cls={cls} source=filename inv_no={inv_no}")
+                            inv_log_done = True
                     # New: attempt invoice fields extraction (with logging markers)
                     if not inv_no:
-                        inv_log_done = False
                         inv_no = FieldExtractor.extract_invoice_no(text)
                         row["collected_INVOICE_NO"] = inv_no
                         if not inv_log_done:
@@ -1212,16 +1212,15 @@ class RegexProcessingStrategy(LinkStrategy):
 
                     # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
-                    if isinstance(answers, dict):
-                        inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
-                            (answers.get("remote_file_name") or "")
-                        ) or FieldExtractor.extract_invoice_no_from_filename(str(f.name))
-                        inv_no = _invoice_no_in_text(inv_no_target, text) if inv_no_target else None
-                        if inv_no:
-                            row["collected_INVOICE_NO"] = inv_no
-                            if not inv_log_done:
-                                logging.info(f"[inv_no_extract][found_in_fn] file={f.name} cls={cls} source=filename inv_no={inv_no}")
-                                inv_log_done = True
+                    inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
+                        (answers.get("remote_file_name") or "")
+                    )
+                    inv_no = _invoice_no_in_text(inv_no_target, text) if inv_no_target else None
+                    if inv_no:
+                        row["collected_INVOICE_NO"] = inv_no
+                        if not inv_log_done:
+                            logging.info(f"[inv_no_extract][found_in_fn] file={f.name} cls={cls} source=filename inv_no={inv_no}")
+                            inv_log_done = True
                     # New: attempt invoice fields extraction (with logging markers)
                     if not inv_no:
                         inv_no = FieldExtractor.extract_invoice_no(text)
