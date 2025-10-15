@@ -79,6 +79,14 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     "status": entry.get("status"),
                 }
 
+                # Add pattern validation status if present
+                pattern_validation_status = entry.get("pattern_validation_status")
+                if pattern_validation_status:
+                    item["pattern_validation_status"] = pattern_validation_status
+                    pattern_validation_reason = entry.get("pattern_validation_reason")
+                    if pattern_validation_reason:
+                        item["pattern_validation_reason"] = pattern_validation_reason
+
                 # Add blacklist information if present
                 blacklisted = entry.get("blacklisted", {})
                 if blacklisted:
@@ -230,13 +238,14 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                         per_file_result[file_path] = result
                 # Update remaining files for next subchain based on passthrough statuses
                 # Rerun only files whose status is Pending, Unmatched, or failed.
-                # Files marked as Matched or Blacklisted should not be rerun.
+                # Files marked as Matched, Blacklisted, PatternMismatch, or MissingMetadata should not be rerun.
                 try:
                     # Support both the internal passthrough shape {"files": [...]} and
                     # a direct list (summary-style) where entries may use key "file".
                     root = (self.passthrough or {})
                     files_list = root.get("files", root if isinstance(root, list) else [])
                     rerun_statuses = {"pending", "unmatched", "failed"}
+                    skip_statuses = {"patternmismatch", "missingmetadata"}  # Files with validation failures
                     next_remaining: List[str] = []
                     seen: set = set()
                     for entry in files_list:
@@ -245,6 +254,10 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             if not fp:
                                 continue
                             status = str(entry.get("status", "Pending")).strip().lower()
+                            # Skip files with pattern validation failures
+                            if status in skip_statuses:
+                                logging.info(f"⏭️ Skipping {fp} due to validation status: {status}")
+                                continue
                             if status in rerun_statuses and fp not in seen:
                                 next_remaining.append(fp)
                                 seen.add(fp)

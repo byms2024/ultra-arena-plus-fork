@@ -782,6 +782,7 @@ class RegexPreProcessingStrategy(LinkStrategy):
     
     def get_target_from_pdfs_metadata(self, file_group: list[str]) -> dict[str, dict]:
         from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
+        from Ultra_Arena_Main.common.filename_validator import FilenameValidator
         answers: dict[str, dict] = {}
 
         for file_path in file_group:
@@ -813,6 +814,15 @@ class RegexPreProcessingStrategy(LinkStrategy):
                 # Store DMS data in passthrough for visibility in logs
                 if any(v is not None for v in mapped.values()):
                     self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                
+                # Validate filename pattern after metadata extraction
+                case_sensitive = self.config.get("filename_pattern_case_sensitive", True)
+                validation_status = self.validate_filename_pattern(file_path, case_sensitive=case_sensitive)
+                
+                # If validation failed, skip further processing for this file
+                if FilenameValidator.should_skip_processing(validation_status):
+                    logging.warning(f"⚠️ Skipping {file_path} due to filename validation: {validation_status}")
+                    continue
                 
                 # Store as a dict, not as an Answers object
                 answers[Path(file_path).expanduser().resolve()] = {

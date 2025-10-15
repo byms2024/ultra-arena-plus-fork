@@ -163,6 +163,8 @@ class TextPreProcessingStrategy(LinkStrategy):
             try:
                 if self.config.get("enable_pdf_metadata", False):
                     from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
+                    from Ultra_Arena_Main.common.filename_validator import FilenameValidator
+                    
                     meta = read_pdf_metadata_dict(file_path)
                     dms = meta.get("dms_data") or {}
                     if dms:
@@ -178,10 +180,21 @@ class TextPreProcessingStrategy(LinkStrategy):
                             "part_amount_dms": dms.get("part_amount_dms"),
                             "dms_file_id": dms.get("file_id"),
                             "dms_embedded_at": dms.get("embedded_at"),
+                            "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name") or dms.get("remote_file_name"),
                         }
                         self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
                     if self.config.get("store_raw_pdf_info", False):
                         self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+                    
+                    # Validate filename pattern after metadata extraction
+                    case_sensitive = self.config.get("filename_pattern_case_sensitive", True)
+                    validation_status = self.validate_filename_pattern(file_path, case_sensitive=case_sensitive)
+                    
+                    # If validation failed, skip further processing for this file
+                    if FilenameValidator.should_skip_processing(validation_status):
+                        logging.warning(f"⚠️ Skipping {file_path} due to filename validation: {validation_status}")
+                        file_texts[str(Path(file_path).absolute())] = None
+                        continue
             except Exception:
                 # Non-fatal: proceed with preprocessing even if metadata extraction fails
                 pass

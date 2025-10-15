@@ -210,6 +210,63 @@ class LinkStrategy(BaseProcessingStrategy):
         entry["status"] = status
         logging.debug(f"📊 Updated status for {file_path}: {status}")
 
+    def validate_filename_pattern(self, file_path: str, case_sensitive: bool = True) -> str:
+        """
+        Validate that the filename matches the expected pattern.
+        
+        Expected pattern: {DEALER_CODE}_NF{NUMBER}_nota_(peca|servico)
+        
+        Args:
+            file_path: Path to the file being validated
+            case_sensitive: Whether to perform case-sensitive matching (default: True)
+            
+        Returns:
+            Validation status: "VALID", "PATTERN_MISMATCH", "MISSING_METADATA", "MISSING_REMOTE_FILE_NAME", "MISSING_DEALER_CODE"
+        """
+        from ..common.filename_validator import FilenameValidator
+        
+        if self.passthrough is None:
+            logging.warning(f"⚠️ Cannot validate filename pattern: no passthrough attached for {file_path}")
+            return FilenameValidator.MISSING_METADATA
+        
+        # Get file entry from passthrough
+        entry = self._get_or_create_file_entry(file_path)
+        extracted_data = entry.get("extracted_data", {})
+        
+        # Get metadata fields needed for validation
+        remote_file_name = extracted_data.get("remote_file_name")
+        dealer_code = extracted_data.get("dealer_code")
+        
+        # Perform validation
+        validator = FilenameValidator(case_sensitive=case_sensitive)
+        status, reason = validator.validate_filename(remote_file_name, dealer_code)
+        
+        # Store validation result in file entry
+        entry["pattern_validation_status"] = status
+        entry["pattern_validation_reason"] = reason
+        
+        # Log result with appropriate emoji
+        if status == FilenameValidator.VALID:
+            logging.info(f"✅ Pattern validation PASSED for {file_path}")
+        elif status == FilenameValidator.PATTERN_MISMATCH:
+            logging.warning(f"⚠️ Pattern validation FAILED for {file_path}: {reason}")
+            # Update file status to indicate it should be skipped
+            entry["status"] = "PatternMismatch"
+        elif status == FilenameValidator.MISSING_METADATA:
+            logging.warning(f"⚠️ Pattern validation SKIPPED for {file_path}: {reason}")
+            # Update file status to indicate metadata is missing
+            entry["status"] = "MissingMetadata"
+        elif status == FilenameValidator.MISSING_REMOTE_FILE_NAME:
+            logging.warning(f"⚠️ Pattern validation SKIPPED for {file_path}: {reason}")
+            # Update file status to indicate metadata is missing
+            entry["status"] = "MissingMetadata"
+        elif status == FilenameValidator.MISSING_DEALER_CODE:
+            logging.warning(f"⚠️ Pattern validation SKIPPED for {file_path}: {reason}")
+            # Update file status to indicate metadata is missing
+            entry["status"] = "MissingMetadata"
+        
+        return status
+
 # Pre-processing strategies
 class TextPreProcessingStrategy(LinkStrategy):
     """Pre-processing strategy for text-based operations."""
@@ -353,6 +410,22 @@ class TextPreProcessingStrategy(LinkStrategy):
                 # Optionally keep raw document info
                 if self.config.get("store_raw_pdf_info", False):
                     self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+                
+                # Validate filename pattern after metadata extraction
+                from ..common.filename_validator import FilenameValidator
+                case_sensitive = self.config.get("filename_pattern_case_sensitive", True)
+                validation_status = self.validate_filename_pattern(file_path, case_sensitive=case_sensitive)
+                
+                # If validation failed, skip further processing for this file
+                if FilenameValidator.should_skip_processing(validation_status):
+                    result = {
+                        "preprocessed": False,
+                        "preprocessing_type": "text",
+                        "preprocessing_result": f"File skipped due to filename validation: {validation_status}",
+                        "pattern_validation_status": validation_status
+                    }
+                    results.append((file_path, result))
+                    continue
             
             # Extract file content
             text_content = self.extract_text(file_path)
@@ -403,17 +476,60 @@ class ImagePreProcessingStrategy(LinkStrategy):
         """Apply image pre-processing to files."""
         start_time = time.time()
         results = []
+        successful_files = 0
+        failed_files = 0
         
         for file_path in file_group:
-            # Placeholder: Implement image preprocessing logic here
-            # For now, just pass through the file unchanged
+            # Read and store PDF metadata (including DmsData)
+            from ..common.pdf_metadata import read_pdf_metadata_dict
+            from ..common.filename_validator import FilenameValidator
+            
+            if self.config.get("enable_pdf_metadata", False):
+                meta = read_pdf_metadata_dict(file_path)
+                dms = meta.get("dms_data") or {}
+                if dms:
+                    mapped = {
+                        "claim_id": dms.get("claim_id"),
+                        "claim_no": dms.get("claim_no"),
+                        "vin": dms.get("vin"),
+                        "dealer_code": dms.get("dealer_code"),
+                        "dealer_name": dms.get("dealer_name"),
+                        "cnpj1": dms.get("dealer_cnpj"),
+                        "gross_credit_dms": dms.get("gross_credit"),
+                        "labour_amount_dms": dms.get("labour_amount_dms"),
+                        "part_amount_dms": dms.get("part_amount_dms"),
+                        "dms_file_id": dms.get("file_id"),
+                        "dms_embedded_at": dms.get("embedded_at"),
+                        "invoice_no": dms.get("invoice_no"),
+                        "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name"),
+                    }
+                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                
+                # Validate filename pattern after metadata extraction
+                case_sensitive = self.config.get("filename_pattern_case_sensitive", True)
+                validation_status = self.validate_filename_pattern(file_path, case_sensitive=case_sensitive)
+                
+                # If validation failed, skip further processing for this file
+                if FilenameValidator.should_skip_processing(validation_status):
+                    result = {
+                        "preprocessed": False,
+                        "preprocessing_type": "image",
+                        "preprocessing_result": f"File skipped due to filename validation: {validation_status}",
+                        "pattern_validation_status": validation_status
+                    }
+                    results.append((file_path, result))
+                    failed_files += 1
+                    continue
+            
+            # Apply image preprocessing logic here
             result = {"preprocessed": True, "preprocessing_type": "image"}
             results.append((file_path, result))
+            successful_files += 1
         
         agg_stats = {
             "total_files": len(file_group),
-            "successful_files": len(file_group),
-            "failed_files": 0,
+            "successful_files": successful_files,
+            "failed_files": failed_files,
             "total_tokens": 0,
             "estimated_tokens": 0,
             "processing_time": int(time.time() - start_time)
@@ -430,17 +546,60 @@ class FilePreProcessingStrategy(LinkStrategy):
         """Apply file pre-processing to files."""
         start_time = time.time()
         results = []
+        successful_files = 0
+        failed_files = 0
         
         for file_path in file_group:
-            # Placeholder: Implement file preprocessing logic here
-            # For now, just pass through the file unchanged
+            # Read and store PDF metadata (including DmsData)
+            from ..common.pdf_metadata import read_pdf_metadata_dict
+            from ..common.filename_validator import FilenameValidator
+            
+            if self.config.get("enable_pdf_metadata", False):
+                meta = read_pdf_metadata_dict(file_path)
+                dms = meta.get("dms_data") or {}
+                if dms:
+                    mapped = {
+                        "claim_id": dms.get("claim_id"),
+                        "claim_no": dms.get("claim_no"),
+                        "vin": dms.get("vin"),
+                        "dealer_code": dms.get("dealer_code"),
+                        "dealer_name": dms.get("dealer_name"),
+                        "cnpj1": dms.get("dealer_cnpj"),
+                        "gross_credit_dms": dms.get("gross_credit"),
+                        "labour_amount_dms": dms.get("labour_amount_dms"),
+                        "part_amount_dms": dms.get("part_amount_dms"),
+                        "dms_file_id": dms.get("file_id"),
+                        "dms_embedded_at": dms.get("embedded_at"),
+                        "invoice_no": dms.get("invoice_no"),
+                        "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name"),
+                    }
+                    self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                
+                # Validate filename pattern after metadata extraction
+                case_sensitive = self.config.get("filename_pattern_case_sensitive", True)
+                validation_status = self.validate_filename_pattern(file_path, case_sensitive=case_sensitive)
+                
+                # If validation failed, skip further processing for this file
+                if FilenameValidator.should_skip_processing(validation_status):
+                    result = {
+                        "preprocessed": False,
+                        "preprocessing_type": "file",
+                        "preprocessing_result": f"File skipped due to filename validation: {validation_status}",
+                        "pattern_validation_status": validation_status
+                    }
+                    results.append((file_path, result))
+                    failed_files += 1
+                    continue
+            
+            # Apply file preprocessing logic here
             result = {"preprocessed": True, "preprocessing_type": "file"}
             results.append((file_path, result))
+            successful_files += 1
         
         agg_stats = {
             "total_files": len(file_group),
-            "successful_files": len(file_group),
-            "failed_files": 0,
+            "successful_files": successful_files,
+            "failed_files": failed_files,
             "total_tokens": 0,
             "estimated_tokens": 0,
             "processing_time": int(time.time() - start_time)
