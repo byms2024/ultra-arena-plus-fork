@@ -30,7 +30,8 @@ def main():
                         "fileNumberPerFile": 1,
                         "pre-processing": {
                             "pre-type": "regex",
-                            "enable_pdf_metadata": True
+                            "enable_pdf_metadata": True,
+                            "filename_pattern_case_sensitive": False
                         },
                         "processing": {
                             "proc-type": "regex",
@@ -46,38 +47,39 @@ def main():
                                 }
                             }
                         }
-                    },
-                    {
-                        "censor": True,
-                        "metadata_fields": [
-                            "claim_id",
-                            "claim_no",
-                            "vin",
-                            "dealer_cnpj",
-                            "part_amount_dms",
-                            "labour_amount_dms"
-                        ],
-                        "subchain_name": "text_first_gemini",
-                        "fileNumberPerFile": 1,
-                        "pre-processing": {
-                            "pre-type": "text",
-                            "enable_pdf_metadata": True
-                        },
-                        "processing": {
-                            "proc-type": "text_first",
-                        },
-                        "post-processing": {
-                            "post-type": "metadata",
-                            "retries": {
-                                "pre_retry": {
-                                    "retry_count": 0
-                                },
-                                "proc_retry": {
-                                    "retry_count": 0
-                                }
-                            }
-                        }
                     }
+                    # {
+                    #     "censor": True,
+                    #     "metadata_fields": [
+                    #         "claim_id",
+                    #         "claim_no",
+                    #         "vin",
+                    #         "dealer_cnpj",
+                    #         "part_amount_dms",
+                    #         "labour_amount_dms"
+                    #     ],
+                    #     "subchain_name": "text_first_gemini",
+                    #     "fileNumberPerFile": 1,
+                    #     "pre-processing": {
+                    #         "pre-type": "text",
+                    #         "enable_pdf_metadata": True,
+                    #         "filename_pattern_case_sensitive": False
+                    #     },
+                    #     "processing": {
+                    #         "proc-type": "text_first",
+                    #     },
+                    #     "post-processing": {
+                    #         "post-type": "metadata",
+                    #         "retries": {
+                    #             "pre_retry": {
+                    #                 "retry_count": 0
+                    #             },
+                    #             "proc_retry": {
+                    #                 "retry_count": 0
+                    #             }
+                    #         }
+                    #     }
+                    # }
                 ]
             }
         }
@@ -136,6 +138,14 @@ def main():
 
                     if isinstance(file_data, dict):
                         print(f"   Status: {file_data.get('status', 'N/A')}")
+                        
+                        # Check for pattern validation status
+                        pattern_status = file_data.get('pattern_validation_status')
+                        if pattern_status:
+                            print(f"   🔍 Pattern Validation: {pattern_status}")
+                            pattern_reason = file_data.get('pattern_validation_reason')
+                            if pattern_reason:
+                                print(f"      Reason: {pattern_reason}")
 
                         # Check for DMS data (should be preserved from pre-processing)
                         dms_fields = {k: v for k, v in file_data.items() if k.startswith('dms.')}
