@@ -22,7 +22,7 @@ try:
     from PIL import Image  # type: ignore
     import pytesseract  # type: ignore
     from pdf2image import convert_from_path  # type: ignore
-    _ocr_modules_available = False
+    _ocr_modules_available = True
 except Exception:
     _ocr_modules_available = False
 

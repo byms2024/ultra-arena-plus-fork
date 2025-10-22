@@ -2,12 +2,13 @@
 Direct file processing strategy.
 """
 
+from dataclasses import dataclass
 import logging
 import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
-from .base_strategy import BaseProcessingStrategy
+from .strategy_factory import LinkStrategy
 from llm_client.llm_client_factory import LLMClientFactory
 from llm_metrics import TokenCounter
 import sys
@@ -15,8 +16,94 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from processors.file_mapping_utils import FileMappingFactory
 
+@dataclass
+class Answers:
+    claim_no: Optional[str] = None
+    vin: Optional[str] = None
+    service_price: Optional[str] = None
+    parts_price: Optional[str] = None
+    cnpj: Optional[str] = None
+    
+@dataclass
+class PreprocessedData:
+    files: list[Path]
+    file_texts: dict[Path, str]
+    file_classes: dict[Path, str]
+    answers: Answers
 
-class DirectFileProcessingStrategy(BaseProcessingStrategy):
+
+class DirectFilePreProcessingStrategy(LinkStrategy):
+    def __init__(self, config: Dict[str, Any] | None = None, streaming: bool = False):
+        super().__init__(config, streaming)
+        self.config = config or {}
+        self.streaming = streaming
+
+    def process_file_group(self, *, config_manager=None, file_group: List[str], group_index: int,
+                           group_id: str = "", system_prompt: Optional[str] = None, user_prompt: str = "") -> Tuple[List[Tuple[str, Dict]], Dict, str]:
+        """Apply text pre-processing to files."""
+
+        results = []
+
+        self.regex_criteria = self.config.get('text_first_regex_criteria')
+        desensitization_config = self.config.get('censor')
+        
+        file_list = []
+        file_texts = {}
+
+        for file_path in file_group:
+            # Optionally read and store PDF metadata (including DMS) into passthrough
+            
+            if desensitization_config:
+                from data_sensitization import censor_file 
+                file_path = censor_file(Path(file_path).name)
+            
+            file_list.append(str(Path(file_path).absolute()))
+            
+
+            try:
+                if self.config.get("enable_pdf_metadata", False):
+                    from Ultra_Arena_Main.common.pdf_metadata import read_pdf_metadata_dict
+                    meta = read_pdf_metadata_dict(file_path)
+                    dms = meta.get("dms_data") or {}
+                    if dms:
+                        mapped = {
+                            "claim_id": dms.get("claim_id"),
+                            "claim_no": dms.get("claim_no"),
+                            "vin": dms.get("vin"),
+                            "dealer_code": dms.get("dealer_code"),
+                            "dealer_name": dms.get("dealer_name"),
+                            "cnpj1": dms.get("dealer_cnpj"),
+                            "invoice_no": dms.get("invoice_no"),
+                            "invoice_issue_date": dms.get("invoice_issue_date"),
+                            "gross_credit_dms": dms.get("gross_credit"),
+                            "labour_amount_dms": dms.get("labour_amount_dms"),
+                            "part_amount_dms": dms.get("part_amount_dms"),
+                            "dms_file_id": dms.get("file_id"),
+                            "dms_embedded_at": dms.get("embedded_at"),
+                        }
+                        self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
+                    if self.config.get("store_raw_pdf_info", False):
+                        self.update_extracted_data(file_path, {"pdf_document_info": meta.get("document_info", {})})
+            except Exception:
+                # Non-fatal: proceed with preprocessing even if metadata extraction fails
+                pass
+
+
+
+        results = [PreprocessedData(
+            files=file_list,
+            file_texts=file_texts,
+            answers= Answers(),
+            file_classes= {}
+        )]
+
+        agg_stats = {"total_files": len(file_group)}
+
+        info = ""
+        
+        return results, agg_stats, info
+
+class DirectFileProcessingStrategy(LinkStrategy):
     """Strategy for processing files directly by sending them to LLM."""
     
     def __init__(self, config: Dict[str, Any], streaming: bool = False):

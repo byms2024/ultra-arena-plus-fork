@@ -121,7 +121,7 @@ class TextPreProcessingStrategy(LinkStrategy):
             self.primary_extractor.extractor_lib != self.secundary_extractor.extractor_lib
         )
 
-        should_try_secondary = False
+        # should_try_secondary = False
 
         # Tries second option and decides which text to use 
         if should_try_secondary:
@@ -390,7 +390,7 @@ class TextFirstProcessingStrategy(LinkStrategy):
             logging.info(f"🔎 TextFirst passthrough after processing: {json.dumps(after_summary, ensure_ascii=False)}")
 
         try:
-            from .data_sensitization import resensitize_data
+            from data_sensitization import resensitize_data
             results = resensitize_data(results)
         except Exception as e:
             logging.error(f"❌ Failed to resensitize data: {e}")

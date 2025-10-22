@@ -63,7 +63,8 @@ class PreProcessingLinkFactory:
         elif strategy_type == "image":
             strategy = ImagePreProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "file":
-            strategy = FilePreProcessingStrategy(config, streaming=streaming)
+            from .direct_file_strategy import DirectFilePreProcessingStrategy
+            strategy = DirectFilePreProcessingStrategy(config, streaming=streaming)
         elif strategy_type == "regex":
             from .regex_strategy import RegexPreProcessingStrategy
             strategy = RegexPreProcessingStrategy(config, streaming=streaming)
