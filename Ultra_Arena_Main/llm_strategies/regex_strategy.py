@@ -3,6 +3,7 @@ Regex processing strategy - placeholder for regex-based document processing.
 """
 
 import logging
+import math
 import time
 from typing import Iterable, Dict, List, Any, Optional, Tuple
 import io
@@ -16,15 +17,23 @@ import pandas as pd
 from Ultra_Arena_Main.llm_strategies.strategy_factory import LinkStrategy
 
 
-
-# Optional OCR / PDF tooling
 try:
-    from PIL import Image  # type: ignore
-    import pytesseract  # type: ignore
-    from pdf2image import convert_from_path  # type: ignore
-    _ocr_modules_available = True
+    import psutil  # for CPU affinity and priority control
 except Exception:
-    _ocr_modules_available = False
+    psutil = None  # type: ignore
+
+try:
+    from pdf2image import convert_from_path  # requires Poppler installed
+except Exception:
+    convert_from_path = None  # type: ignore
+try:
+    import pytesseract
+except Exception:
+    pytesseract = None  # type: ignore
+try:
+    import psutil  # for CPU affinity and priority control
+except Exception:
+    psutil = None  # type: ignore
 
 try:
     import fitz  # type: ignore  # PyMuPDF
@@ -234,69 +243,6 @@ def _contains_with_0O_ambiguity(haystack: str, needle: str) -> bool:
         return False
     return False
 
-
-# =========================
-# Text extraction utilities
-# =========================
-
-def _find_poppler_bin() -> Optional[str]:
-    env_path = os.environ.get("POPPLER_PATH")
-    if env_path and os.path.isdir(env_path):
-        if os.path.exists(os.path.join(env_path, "pdftoppm.exe")) or os.path.exists(os.path.join(env_path, "pdftocairo.exe")):
-            return env_path
-    user_home = os.path.expanduser("~")
-    dl_root = os.path.join(user_home, "Downloads", "poppler-25.09.0")
-    if os.path.isdir(dl_root):
-        for root, _, _ in os.walk(dl_root):
-            if os.path.basename(root).lower() == "bin":
-                if os.path.exists(os.path.join(root, "pdftoppm.exe")) or os.path.exists(os.path.join(root, "pdftocairo.exe")):
-                    return root
-    candidates = [
-        r"C:\\Program Files\\poppler\\bin",
-        r"C:\\Program Files (x86)\\poppler\\bin",
-        os.path.join(user_home, "Desktop", "poppler-windows", "bin"),
-        os.path.join(user_home, "Desktop", "poppler-windows-master", "bin"),
-        os.path.join(user_home, "Desktop", "poppler-windows-master", "Library", "bin"),
-    ]
-    for candidate in candidates:
-        if os.path.isdir(candidate):
-            if os.path.exists(os.path.join(candidate, "pdftoppm.exe")) or os.path.exists(os.path.join(candidate, "pdftocairo.exe")):
-                return candidate
-    return None
-
-
-def _find_tesseract_cmd() -> Optional[str]:
-    env_cmd = os.environ.get("TESSERACT_CMD")
-    if env_cmd and os.path.exists(env_cmd):
-        return env_cmd
-    import shutil
-    which_cmd = shutil.which("tesseract")
-    if which_cmd:
-        return which_cmd
-    candidates = [
-        r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
-        r"C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
-        r"C:\\ProgramData\\chocolatey\\bin\\tesseract.exe",
-        r"C:\\Users\\alexandre.carrer\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe",
-        "/mnt/c/Program Files/Tesseract-OCR/tesseract.exe",
-        "/mnt/c/Program Files (x86)/Tesseract-OCR/tesseract.exe",
-    ]
-    for candidate in candidates:
-        if os.path.exists(candidate):
-            return candidate
-    return None
-
-
-_ocr_available = False
-if _ocr_modules_available:
-    try:
-        _tesseract_cmd = _find_tesseract_cmd()
-        if _tesseract_cmd:
-            pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd  # type: ignore[attr-defined]
-            _ocr_available = True
-    except Exception:
-        _ocr_available = False
-
 # PDFTEXTEXTRACTOR
 
 class PdfTextExtractor:
@@ -334,38 +280,12 @@ class PdfTextExtractor:
             except Exception:
                 extracted_text = ""
 
-        if len(extracted_text) < 1000 and _ocr_available:
-            images = []
-            poppler_bin = _find_poppler_bin()
-            if poppler_bin is not None:
-                try:
-                    images = convert_from_path(str(file_path), poppler_path=poppler_bin, dpi=300)
-                except Exception:
-                    images = []
-            if not images and _pymupdf_available:
-                try:
-                    doc = fitz.open(str(file_path))
-                    zoom = 300.0 / 72.0
-                    matrix = fitz.Matrix(zoom, zoom)
-                    for page in doc:
-                        pix = page.get_pixmap(matrix=matrix)
-                        images.append(Image.open(io.BytesIO(pix.tobytes("png"))))
-                except Exception:
-                    images = []
-            try:
-                ocr_texts = []
-                for img in images:
-                    try:
-                        ocr_text = pytesseract.image_to_string(img, lang="por")
-                    except Exception:
-                        ocr_text = pytesseract.image_to_string(img)
-                    ocr_texts.append(ocr_text)
-                ocr_result = "\n".join(ocr_texts)
-                if len(ocr_result) > len(extracted_text):
-                    extracted_text = ocr_result
-            except Exception:
-                pass
+        if len(extracted_text) < 1000 and (convert_from_path is None or pytesseract is None):
+            
+            extracted_text, convert_time, ocr_time, total_time = ocr_extract_pdf_text_with_poppler_tesseract(file_path)
+        
         return extracted_text
+
 
     @staticmethod
     def extract_text_best_effort(file_path: Path) -> str:
@@ -379,6 +299,100 @@ class PdfTextExtractor:
         except Exception:
             return ""
 
+def ocr_extract_pdf_text_with_poppler_tesseract(pdf_path: Path, dpi: int = 300):
+    """OCR the PDF via Poppler (pdf2image) and Tesseract.
+
+    Returns a tuple: (text, convert_time_s, ocr_time_s, total_time_s)
+    """
+    if convert_from_path is None or pytesseract is None:
+        raise RuntimeError("Missing OCR deps. Install: pip install pdf2image pytesseract")
+
+    start_total = time.perf_counter()
+
+    # Limit threads used by Tesseract/OpenMP to avoid CPU spikes
+    os.environ.setdefault('OMP_THREAD_LIMIT', '1')
+    os.environ.setdefault('OMP_NUM_THREADS', '1')
+    os.environ.setdefault('TESSERACT_NUM_THREADS', '1')
+
+    with CpuGuard(usage_fraction=0.8):
+        # 1) PDF -> images
+        t0 = time.perf_counter()
+        images = convert_from_path(str(pdf_path), dpi=dpi)
+        t1 = time.perf_counter()
+        convert_time = t1 - t0
+
+        # 2) images -> text (sequential)
+        t2 = time.perf_counter()
+        parts: List[str] = []
+        for img in images:
+            try:
+                txt = pytesseract.image_to_string(img)
+            except Exception:
+                txt = ""
+            if txt:
+                parts.append(txt)
+        t3 = time.perf_counter()
+        ocr_time = t3 - t2
+
+    total_time = time.perf_counter() - start_total
+    return ("\n".join(parts), convert_time, ocr_time, total_time)
+
+class CpuGuard:
+    """Cap process CPU usage by limiting cores and priority while inside the context.
+
+    - Restricts CPU affinity to ~80% of total cores
+    - Lowers process priority to reduce contention
+    Children (Poppler/Tesseract) inherit these constraints.
+    """
+    def __init__(self, usage_fraction: float = 0.8):
+        self.usage_fraction = max(0.1, min(usage_fraction, 1.0))
+        self._orig_affinity = None
+        self._orig_nice = None
+        self._proc = None
+
+    def __enter__(self):
+        try:
+            if psutil is None:
+                return self
+            self._proc = psutil.Process(os.getpid())
+            if hasattr(self._proc, 'cpu_affinity'):
+                all_cpus = list(range(psutil.cpu_count() or 1))
+                allowed = max(1, int(math.floor(len(all_cpus) * self.usage_fraction)))
+                target_cpus = all_cpus[:allowed]
+                try:
+                    self._orig_affinity = self._proc.cpu_affinity()
+                    self._proc.cpu_affinity(target_cpus)
+                except Exception:
+                    self._orig_affinity = None
+            try:
+                self._orig_nice = self._proc.nice()
+                if sys.platform.startswith('win'):
+                    self._proc.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)  # type: ignore[attr-defined]
+                else:
+                    self._proc.nice(10)
+            except Exception:
+                self._orig_nice = None
+        except Exception:
+            pass
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if psutil is None or self._proc is None:
+                return False
+            if self._orig_affinity is not None:
+                try:
+                    self._proc.cpu_affinity(self._orig_affinity)
+                except Exception:
+                    pass
+            if self._orig_nice is not None:
+                try:
+                    self._proc.nice(self._orig_nice)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
 
 class PdfClassifier:
     @staticmethod
