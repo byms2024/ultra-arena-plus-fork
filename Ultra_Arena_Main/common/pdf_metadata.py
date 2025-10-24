@@ -65,13 +65,12 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
     except Exception as e:
         logging.error(f"Error reading PDF metadata from {pdf_path}: {e}")
 
-    print(f"==============================================================")
-    print(f"====================DMS DATA: {dms_data}")
-    print(f"==============================================================")
-    
-    print(f"==============================================================")
-    print(f"====================DMS DATA (remote_file_name): {dms_data.get("remote_file_name")}")
-    print(f"==============================================================")
+    logging.info("==============================================================")
+    logging.info("====================DMS DATA: %s", dms_data)
+    logging.info("==============================================================")
+    logging.info("==============================================================")
+    logging.info("====================DMS DATA (remote_file_name): %s", dms_data.get('remote_file_name'))
+    logging.info("==============================================================")
     # Derive invoice number from file name pattern like '...1234_nota...' if present
     try:
         remote_file_name = dms_data.get("remote_file_name")
@@ -93,4 +92,8 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
 
     return {"document_info": document_info, "dms_data": dms_data}
 
+
+__all__ = [
+    "read_pdf_metadata_dict",
+]
 
