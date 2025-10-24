@@ -4,6 +4,7 @@ Regex processing strategy - placeholder for regex-based document processing.
 
 import logging
 import math
+import sys
 import time
 from typing import Iterable, Dict, List, Any, Optional, Tuple
 import io
@@ -280,8 +281,8 @@ class PdfTextExtractor:
             except Exception:
                 extracted_text = ""
 
-        if len(extracted_text) < 1000 and (convert_from_path is None or pytesseract is None):
-            
+        # if len(extracted_text) < 1000 and (convert_from_path is None or pytesseract is None):
+        if (convert_from_path is None or pytesseract is None):
             extracted_text, convert_time, ocr_time, total_time = ocr_extract_pdf_text_with_poppler_tesseract(file_path)
         
         return extracted_text
