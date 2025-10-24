@@ -56,6 +56,21 @@ from .base_strategy import BaseProcessingStrategy
 from llm_client.llm_client_factory import LLMClientFactory
 from llm_metrics import TokenCounter
 
+# Log detected OCR/text-extraction dependencies and environment
+try:
+    logging.info(
+        "[ocr.init] deps: pdf2image=%s, pytesseract=%s, psutil=%s, pymupdf=%s, pdfminer=%s, pypdf2=%s, platform=%s",
+        "ok" if convert_from_path else "missing",
+        "ok" if pytesseract else "missing",
+        "ok" if psutil else "missing",
+        "ok" if _pymupdf_available else "missing",
+        "ok" if 'pdfminer_extract_text' in globals() and pdfminer_extract_text else "missing",
+        "ok" if PyPDF2 else "missing",
+        sys.platform,
+    )
+except Exception:
+    pass
+
 # =========================
 # Patterns and normalizers
 # =========================
@@ -259,14 +274,18 @@ class PdfTextExtractor:
 
     @staticmethod
     def extract_text_from_pdf(file_path: Path) -> str:
+        logging.info("[ocr.pdf] start_extract file=%s", file_path)
         extracted_text = ""
         if pdfminer_extract_text is not None:
             try:
+                logging.info("[ocr.pdf] using=pdfminer_high_level")
                 extracted_text = pdfminer_extract_text(str(file_path)) or ""
             except Exception:
+                logging.exception("[ocr.pdf] pdfminer_failed")
                 extracted_text = ""
         elif PyPDF2 is not None:
             try:
+                logging.info("[ocr.pdf] using=PyPDF2")
                 fragments: list[str] = []
                 with open(file_path, "rb") as f:
                     reader = PyPDF2.PdfReader(f)  # type: ignore[attr-defined]
@@ -274,17 +293,48 @@ class PdfTextExtractor:
                         try:
                             extracted = page.extract_text() or ""
                         except Exception:
+                            logging.exception("[ocr.pdf] pypdf2_page_extract_failed")
                             extracted = ""
                         if extracted:
                             fragments.append(extracted)
                 extracted_text = "\n".join(fragments)
             except Exception:
+                logging.exception("[ocr.pdf] pypdf2_failed")
                 extracted_text = ""
+        else:
+            logging.info("[ocr.pdf] no_text_extractor_available")
 
-        # if len(extracted_text) < 1000 and (convert_from_path is None or pytesseract is None):
-        if (convert_from_path is None or pytesseract is None):
-            extracted_text, convert_time, ocr_time, total_time = ocr_extract_pdf_text_with_poppler_tesseract(file_path)
-        
+        logging.info("[ocr.pdf] initial_len=%d", len(extracted_text or ""))
+
+        # Decide whether to OCR; prefer OCR when initial text is likely too small
+        try:
+            # if len(extracted_text or "") < 1000:            
+            if 1==1:
+                if convert_from_path and pytesseract:
+                    logging.info(
+                        "[ocr.pdf] invoking_ocr deps_ok pdf2image=%s pytesseract=%s",
+                        True, True,
+                    )
+                    ocr_text, convert_time, ocr_time, total_time = ocr_extract_pdf_text_with_poppler_tesseract(file_path)
+                    logging.info(
+                        "[ocr.pdf] ocr_done convert_time=%.3fs ocr_time=%.3fs total_time=%.3fs ocr_len=%d",
+                        convert_time, ocr_time, total_time, len(ocr_text or ""),
+                    )
+                    if len(ocr_text or "") > len(extracted_text or ""):
+                        logging.info("[ocr.pdf] ocr_selected over initial_extraction")
+                        extracted_text = ocr_text
+                    else:
+                        logging.info("[ocr.pdf] kept_initial_extraction over_ocr")
+                else:
+                    logging.warning(
+                        "[ocr.pdf] ocr_skipped deps_missing pdf2image=%s pytesseract=%s",
+                        bool(convert_from_path), bool(pytesseract),
+                    )
+            else:
+                logging.info("[ocr.pdf] skip_ocr initial_text_large_enough")
+        except Exception:
+            logging.exception("[ocr.pdf] ocr_decision_failed")
+
         return extracted_text
 
 
@@ -309,34 +359,72 @@ def ocr_extract_pdf_text_with_poppler_tesseract(pdf_path: Path, dpi: int = 300):
         raise RuntimeError("Missing OCR deps. Install: pip install pdf2image pytesseract")
 
     start_total = time.perf_counter()
+    try:
+        size_bytes = os.path.getsize(pdf_path)
+    except Exception:
+        size_bytes = -1
+    logging.info("[ocr.exec] start pdf=%s size_bytes=%s dpi=%s", pdf_path, size_bytes, dpi)
 
     # Limit threads used by Tesseract/OpenMP to avoid CPU spikes
     os.environ.setdefault('OMP_THREAD_LIMIT', '1')
     os.environ.setdefault('OMP_NUM_THREADS', '1')
     os.environ.setdefault('TESSERACT_NUM_THREADS', '1')
+    try:
+        logging.info(
+            "[ocr.exec] env OMP_THREAD_LIMIT=%s OMP_NUM_THREADS=%s TESSERACT_NUM_THREADS=%s",
+            os.environ.get('OMP_THREAD_LIMIT'), os.environ.get('OMP_NUM_THREADS'), os.environ.get('TESSERACT_NUM_THREADS')
+        )
+    except Exception:
+        pass
+
+    # Log tesseract binary/version if available
+    try:
+        if pytesseract:
+            ver = getattr(pytesseract, 'get_tesseract_version', None)
+            ver_str = str(ver()) if callable(ver) else "unknown"
+            cmd = getattr(getattr(pytesseract, 'pytesseract', pytesseract), 'tesseract_cmd', None)
+            logging.info("[ocr.exec] tesseract version=%s cmd=%s", ver_str, cmd)
+    except Exception:
+        logging.exception("[ocr.exec] tesseract_version_log_failed")
 
     with CpuGuard(usage_fraction=0.8):
         # 1) PDF -> images
         t0 = time.perf_counter()
-        images = convert_from_path(str(pdf_path), dpi=dpi)
+        try:
+            images = convert_from_path(str(pdf_path), dpi=dpi)
+        except Exception:
+            logging.exception("[ocr.exec] pdf_to_images_failed")
+            images = []
         t1 = time.perf_counter()
         convert_time = t1 - t0
+        logging.info("[ocr.exec] pdf_to_images_done pages=%d time=%.3fs", len(images), convert_time)
 
         # 2) images -> text (sequential)
         t2 = time.perf_counter()
         parts: List[str] = []
-        for img in images:
+        for idx, img in enumerate(images):
+            try:
+                w, h = getattr(img, 'size', (None, None))
+                logging.info("[ocr.exec] page_start index=%d size=%sx%s", idx, w, h)
+            except Exception:
+                pass
+            page_t0 = time.perf_counter()
             try:
                 txt = pytesseract.image_to_string(img)
             except Exception:
+                logging.exception("[ocr.exec] tesseract_failed page=%d", idx)
                 txt = ""
             if txt:
                 parts.append(txt)
+            page_dt = time.perf_counter() - page_t0
+            logging.info("[ocr.exec] page_done index=%d ocr_time=%.3fs text_len=%d", idx, page_dt, len(txt or ""))
         t3 = time.perf_counter()
         ocr_time = t3 - t2
 
     total_time = time.perf_counter() - start_total
-    return ("\n".join(parts), convert_time, ocr_time, total_time)
+    text_joined = "\n".join(parts)
+    logging.info("[ocr.exec] done total_time=%.3fs ocr_time=%.3fs convert_time=%.3fs final_len=%d", total_time, ocr_time, convert_time, len(text_joined or ""))
+    return (text_joined, convert_time, ocr_time, total_time)
 
 class CpuGuard:
     """Cap process CPU usage by limiting cores and priority while inside the context.
@@ -363,7 +451,9 @@ class CpuGuard:
                 try:
                     self._orig_affinity = self._proc.cpu_affinity()
                     self._proc.cpu_affinity(target_cpus)
+                    logging.info("[ocr.cpuguard] set_affinity target=%s orig=%s", target_cpus, self._orig_affinity)
                 except Exception:
+                    logging.exception("[ocr.cpuguard] set_affinity_failed")
                     self._orig_affinity = None
             try:
                 self._orig_nice = self._proc.nice()
@@ -371,7 +461,9 @@ class CpuGuard:
                     self._proc.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)  # type: ignore[attr-defined]
                 else:
                     self._proc.nice(10)
+                logging.info("[ocr.cpuguard] set_nice orig=%s new=%s", self._orig_nice, self._proc.nice())
             except Exception:
+                logging.exception("[ocr.cpuguard] set_nice_failed")
                 self._orig_nice = None
         except Exception:
             pass
@@ -384,12 +476,16 @@ class CpuGuard:
             if self._orig_affinity is not None:
                 try:
                     self._proc.cpu_affinity(self._orig_affinity)
+                    logging.info("[ocr.cpuguard] restore_affinity=%s", self._orig_affinity)
                 except Exception:
+                    logging.exception("[ocr.cpuguard] restore_affinity_failed")
                     pass
             if self._orig_nice is not None:
                 try:
                     self._proc.nice(self._orig_nice)
+                    logging.info("[ocr.cpuguard] restore_nice=%s", self._orig_nice)
                 except Exception:
+                    logging.exception("[ocr.cpuguard] restore_nice_failed")
                     pass
         except Exception:
             pass

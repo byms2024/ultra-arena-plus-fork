@@ -46,37 +46,6 @@ def main():
                                 }
                             }
                         }
-                    },
-                    {
-                        "censor": True,
-                        "metadata_fields": [
-                            "claim_id",
-                            "claim_no",
-                            "vin",
-                            "dealer_cnpj",
-                            "part_amount_dms",
-                            "labour_amount_dms"
-                        ],
-                        "subchain_name": "text_first_gemini",
-                        "fileNumberPerFile": 1,
-                        "pre-processing": {
-                            "pre-type": "text",
-                            "enable_pdf_metadata": True
-                        },
-                        "processing": {
-                            "proc-type": "text_first",
-                        },
-                        "post-processing": {
-                            "post-type": "metadata",
-                            "retries": {
-                                "pre_retry": {
-                                    "retry_count": 0
-                                },
-                                "proc_retry": {
-                                    "retry_count": 0
-                                }
-                            }
-                        }
                     }
                 ]
             }
