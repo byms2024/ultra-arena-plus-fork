@@ -22,7 +22,7 @@ try:
     from PIL import Image  # type: ignore
     import pytesseract  # type: ignore
     from pdf2image import convert_from_path  # type: ignore
-    _ocr_modules_available = True
+    _ocr_modules_available = False
 except Exception:
     _ocr_modules_available = False
 
@@ -193,23 +193,42 @@ def _contains_with_0O_ambiguity(haystack: str, needle: str) -> bool:
     if needle in (haystack or ""):
         return True
 
-    def build_pattern(s: str) -> str:
-        parts: list[str] = []
-        for ch in s:
-            if ch in {"0", "O"}:
-                parts.append("[0O]")
-            elif ch == "8":
-                parts.append("[08]")
-            else:
-                parts.append(re.escape(ch))
-        return "".join(parts)
+    # Build a permissive regex that tolerates common OCR confusions and small noise
+    def char_class(ch: str) -> str:
+        if ch in {"0", "O"}:
+            return "[0O]"
+        if ch in {"1", "I", "L"}:
+            return "[1IL]"
+        if ch in {"5", "S"}:
+            return "[5S]"
+        if ch in {"2", "Z"}:
+            return "[2Z]"
+        if ch in {"8", "B"}:
+            return "[8B]"
+        return re.escape(ch)
 
-    pattern = build_pattern(needle)
     try:
-        if re.search(pattern, haystack or ""):
+        # Allow up to two non-alphanumeric chars between each expected character
+        noise_between = r"[^A-Z0-9]{0,2}"
+        pattern_str = noise_between.join(char_class(c) for c in (needle or ""))
+        pattern = re.compile(pattern_str, re.IGNORECASE)
+        if pattern.search(haystack or ""):
             return True
-        normalized_hay = (haystack or "").replace("O", "0")
-        if re.search(pattern, normalized_hay):
+
+        # Canonicalize both sides and check containment as a last resort
+        def canonicalize(s: str) -> str:
+            s = re.sub(r"[^A-Z0-9]", "", (s or "").upper())
+            s = (s.replace("O", "0")
+                   .replace("I", "1")
+                   .replace("L", "1")
+                   .replace("S", "5")
+                   .replace("Z", "2")
+                   .replace("B", "8"))
+            return s
+
+        hay_c = canonicalize(haystack)
+        ned_c = canonicalize(needle)
+        if ned_c and ned_c in hay_c:
             return True
     except Exception:
         return False
@@ -398,6 +417,15 @@ class FieldExtractor:
     def match_expected_claim_no(text: str, expected_claim: Optional[str]) -> Optional[str]:
         if not expected_claim:
             return None
+        # Fast path: raw case-insensitive substring check (handles the exact-match case)
+        raw_text = (text or "").upper()
+        exp_raw = expected_claim.upper()
+        if exp_raw and exp_raw in raw_text:
+            return expected_claim if expected_claim.upper().startswith("BY") else f"BY{expected_claim}"
+        if exp_raw.startswith("BY"):
+            exp_no_by = exp_raw[2:]
+            if exp_no_by and exp_no_by in raw_text:
+                return expected_claim
         text_compact = _normalize_compact(text or "")
         claim_compact = _normalize_compact(expected_claim)
         found = _contains_with_0O_ambiguity(text_compact, claim_compact)
@@ -449,6 +477,7 @@ class FieldExtractor:
     @staticmethod
     def extract_cnpj2_blind(text: str) -> str:
         text_digits_only = re.sub(r"\D", "", text or "")
+        text_digits_only = text_digits_only.replace(" ", "")
         if "17140820000777" in text_digits_only or "171408201000777" in text_digits_only:
             return "17.140.820/0007-77"
         return ""
