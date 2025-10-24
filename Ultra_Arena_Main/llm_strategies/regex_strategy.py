@@ -308,8 +308,8 @@ class PdfTextExtractor:
 
         # Decide whether to OCR; prefer OCR when initial text is likely too small
         try:
-            # if len(extracted_text or "") < 1000:            
-            if 1==1:
+            if len(extracted_text or "") < 1000:            
+            # if 1==1:
                 if convert_from_path and pytesseract:
                     logging.info(
                         "[ocr.pdf] invoking_ocr deps_ok pdf2image=%s pytesseract=%s",
