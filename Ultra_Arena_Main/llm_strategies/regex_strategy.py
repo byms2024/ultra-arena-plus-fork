@@ -316,6 +316,7 @@ class PdfTextExtractor:
                         True, True,
                     )
                     ocr_text, convert_time, ocr_time, total_time = ocr_extract_pdf_text_with_poppler_tesseract(file_path)
+                    print(ocr_text)
                     logging.info(
                         "[ocr.pdf] ocr_done convert_time=%.3fs ocr_time=%.3fs total_time=%.3fs ocr_len=%d",
                         convert_time, ocr_time, total_time, len(ocr_text or ""),
@@ -340,6 +341,7 @@ class PdfTextExtractor:
 
     @staticmethod
     def extract_text_best_effort(file_path: Path) -> str:
+        print(f"Extracting text from {file_path}")
         suffix = file_path.suffix.lower()
         if suffix == ".txt":
             return PdfTextExtractor.extract_text_from_txt(file_path)
@@ -899,7 +901,7 @@ class RegexPreProcessingStrategy(LinkStrategy):
                 # FORCE BLACKLISTING FOR TESTING: Always fail text extraction
                 t = PdfTextExtractor.extract_text_best_effort(f)
                 # raise Exception("FORCED BLACKLISTING: Simulating text extraction failure")
-
+                print(f"Text extraction: {t}")
                 # Check if text extraction failed or returned empty/invalid text
                 if not t or len(t.strip()) < 10:  # Consider text too short to be useful
                     self.blacklist_file(str(f), "Text extraction failed or returned insufficient content", "regex_preprocessing")
