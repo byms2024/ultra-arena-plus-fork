@@ -723,9 +723,10 @@ class ModularParallelProcessor:
         logging.info(f"   Files: {file_group}")
         
         try:
-            # Use the configured strategy to process the group
+            # Use a fresh strategy instance per group to avoid shared mutable state
             logging.info(f"📋 Using strategy: {self.strategy_type}")
-            results, stats, _ = self.strategy.process_file_group(config_manager=self.config_manager,file_group=file_group, group_index=group_index, user_prompt=user_prompt, system_prompt=system_prompt, group_id=group_id)
+            strategy = ProcessingStrategyFactory.create_strategy(self.strategy_type, self.config, streaming=self.streaming)
+            results, stats, _ = strategy.process_file_group(config_manager=self.config_manager, file_group=file_group, group_index=group_index, user_prompt=user_prompt, system_prompt=system_prompt, group_id=group_id)
             logging.info(f"✅ Group {group_index} processed successfully, got {len(results)} results")
 
             # Process results to match backup project structure exactly
