@@ -496,24 +496,40 @@ class CpuGuard:
 class PdfClassifier:
     @staticmethod
     def is_servico(text: str) -> bool:
+        # Exclude if any "pecas" pattern matches (excludent)
+        has_pecas = False
+        has_servico = False
+        for p in NFE_REGEXES:
+            if p.search(text or ""):
+                has_pecas = True
+                break
         for p in NFS_E_REGEXES:
             if p.search(text or ""):
-                return True
-        return False
+                has_servico = True
+                break
+        return has_servico
 
     @staticmethod
     def is_pecas(text: str) -> bool:
+        # Exclude if any "servico" pattern matches (excludent)
+        has_pecas = False
+        has_servico = False
+        for p in NFS_E_REGEXES:
+            if p.search(text or ""):
+                has_servico = True
+                break
         for p in NFE_REGEXES:
             if p.search(text or ""):
-                return True
-        return False
+                has_pecas = True
+                break
+        return not has_servico and has_pecas
 
     @staticmethod
     def classify_pdf(text: str) -> str:
-        if PdfClassifier.is_pecas(text):
-            return "Peças"
         if PdfClassifier.is_servico(text):
             return "Serviço"
+        if PdfClassifier.is_pecas(text):
+            return "Peças"
         return "Outros"
 
 
@@ -1254,7 +1270,7 @@ class RegexProcessingStrategy(LinkStrategy):
                                 row["collected_parts_price"] = _format_brl_from_cents(cands[0])
                             else:
                                 row["collected_parts_price"] = "0,0"
-                                
+
                     # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
                     inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
