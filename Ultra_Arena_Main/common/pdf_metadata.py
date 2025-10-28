@@ -65,29 +65,25 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
     except Exception as e:
         logging.error(f"Error reading PDF metadata from {pdf_path}: {e}")
 
-    logging.info("==============================================================")
-    logging.info("====================DMS DATA: %s", dms_data)
-    logging.info("==============================================================")
-    logging.info("==============================================================")
-    logging.info("====================DMS DATA (remote_file_name): %s", dms_data.get('remote_file_name'))
-    logging.info("==============================================================")
-    # Derive invoice number from file name pattern like '...1234_nota...' if present
     try:
         remote_file_name = dms_data.get("remote_file_name")
         if not remote_file_name:
             remote_file_name = ""
         document_info["remote_file_name"] = remote_file_name
         dms_data["invoice_no"] = remote_file_name
-        # Match one or more digits either after 'NF' (optionally with separator) or after '_' and before '_nota'
-        m = re.search(r"(?:NF[_\-\.]?|_)(\d{1,15})[\s_]*nota", remote_file_name, re.IGNORECASE)
-        if m:
+        matches = re.findall(r"\d{2,}", remote_file_name or "")
+        if matches:
+            invoice_candidate = matches[-1]  # Use the last match in the filename
             try:
-                val = int(m.group(1))
+                val = int(invoice_candidate)
                 if "invoice_no" not in dms_data or not dms_data.get("invoice_no"):
                     dms_data["invoice_no"] = str(val)
             except Exception:
+                dms_data["invoice_no"] = invoice_candidate
                 pass
     except Exception:
+        logging.error(f"Error deriving invoice number from file name: {e}")
+        dms_data["invoice_no"] = None
         pass
 
     return {"document_info": document_info, "dms_data": dms_data}

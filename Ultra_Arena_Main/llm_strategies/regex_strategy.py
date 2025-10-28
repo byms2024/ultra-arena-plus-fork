@@ -509,10 +509,10 @@ class PdfClassifier:
 
     @staticmethod
     def classify_pdf(text: str) -> str:
-        if PdfClassifier.is_servico(text):
-            return "Serviço"
         if PdfClassifier.is_pecas(text):
             return "Peças"
+        if PdfClassifier.is_servico(text):
+            return "Serviço"
         return "Outros"
 
 
@@ -610,11 +610,11 @@ class FieldExtractor:
     @staticmethod
     def extract_invoice_no_from_filename(filename: str) -> Optional[str]:
         try:
-            # Try to extract the number before "_nota", ignoring "NF" if present or missing
-            m = re.search(r"(\d{1,20})\s*_nota", filename or "", re.IGNORECASE)
-            if not m:
+            # Extract the last contiguous number with more than two digits anywhere in the filename
+            matches = re.findall(r"\d{3,}", filename or "")
+            if not matches:
                 return None
-            num = (m.group(1) or "").strip()
+            num = matches[-1].strip()
             if not num.isdigit():
                 return None
             return str(int(num))
