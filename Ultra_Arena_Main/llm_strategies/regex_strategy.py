@@ -611,7 +611,7 @@ class FieldExtractor:
     def extract_invoice_no_from_filename(filename: str) -> Optional[str]:
         try:
             # Extract the last contiguous number with more than two digits anywhere in the filename
-            matches = re.findall(r"\d{3,}", filename or "")
+            matches = re.findall(r"\d{2,}", filename or "")
             if not matches:
                 return None
             num = matches[-1].strip()
