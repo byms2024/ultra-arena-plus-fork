@@ -137,7 +137,7 @@ def _normalize_compact(value: str) -> str:
 
 
 def _parse_amount_to_cents(amount) -> Optional[int]:
-    if isinstance(amount, float):
+    if isinstance(amount, float) or isinstance(amount, int):
         return int(round(amount * 100))
     else:
         s = (amount or "").strip()
@@ -172,7 +172,7 @@ def _extract_money_candidates_cents(text: str) -> list[int]:
     return sorted(candidates, reverse=True)
 
 
-def _find_expected_value_in_candidates(text: str, expected_cents: int, tolerance_cents: int = 1) -> bool:
+def _find_expected_value_in_candidates(text: str, expected_cents: int, tolerance_cents: int = 50) -> bool:
     candidates = _extract_money_candidates_cents(text or "")
     if not candidates:
         return False
@@ -201,9 +201,10 @@ def _build_amount_regex_from_cents(expected_cents: int) -> re.Pattern[str]:
 
 
 def _find_expected_value_in_text(text: str, expected_cents: int) -> bool:
-    # Prefer candidate-based matching with cent-level tolerance first
+
     if _find_expected_value_in_candidates(text, expected_cents, tolerance_cents=1):
         return True
+
     # Fallback to permissive digit-order regex
     pattern = _build_amount_regex_from_cents(expected_cents)
     if pattern.search(text):
@@ -701,10 +702,6 @@ class FieldExtractor:
         return m.group(1) if m else None
 
 
-# =========================
-# Public API helpers
-# =========================
-
 def _iter_pdf_files(root: Path) -> Iterable[Path]:
     skip_dirs = {".git", "node_modules", "venv", ".venv", "__pycache__"}
     if not root.exists() or not root.is_dir():
@@ -717,14 +714,12 @@ def _iter_pdf_files(root: Path) -> Iterable[Path]:
         except Exception:
             continue
 
-
 def _format_brl_from_cents(cents: Optional[int]) -> str:
     if cents is None:
         return ""
     reais = cents // 100
     c = cents % 100
     return f"{reais:,}".replace(",", ".") + f",{c:02d}"
-
 
 @dataclass
 class Answers:
@@ -751,110 +746,21 @@ def categorize_pdfs(root: str | Path) -> pd.DataFrame:
         rows.append({"file": str(file_path), "class": doc_class})
     return pd.DataFrame(rows, columns=["file", "class"]) if rows else pd.DataFrame(columns=["file", "class"])
 
-def _collect_from_files(
-    files: list[Path],
-    answers: Answers,
-    want_service_price: bool,
-    want_parts_price: bool,
-    ) -> tuple[dict[str, Any], dict[str, bool]]:
-        data: dict[str, Any] = {
-            "claim_no": None,
-            "vin": None,
-            "cnpj": None,
-            "service_price_cents": None,
-            "parts_price_cents": None,
-            "cnpj2": "",
-        }
-        used_answers: dict[str, bool] = {k: False for k in ["claim_no", "vin", "cnpj", "service_price_cents", "parts_price_cents"]}
-
-        for pdf in files:
-            text = PdfTextExtractor.extract_text_best_effort(pdf)
-
-            # Try answers-guided for missing fields
-            if data["claim_no"] is None:
-                m = FieldExtractor.match_expected_claim_no(text, answers.claim_no)
-                if m:
-                    data["claim_no"] = m
-                    used_answers["claim_no"] = True
-            if data["vin"] is None:
-                m = FieldExtractor.match_expected_vin(text, answers.vin)
-                if m:
-                    data["vin"] = m
-                    used_answers["vin"] = True
-            if data["cnpj"] is None:
-                m = FieldExtractor.match_expected_cnpj(text, answers.cnpj)
-                if m:
-                    data["cnpj"] = m
-                    used_answers["cnpj"] = True
-
-            if want_service_price and data["service_price_cents"] is None:
-                m = FieldExtractor.match_expected_amount(text, answers.service_price)
-                if m is not None:
-                    data["service_price_cents"] = m
-                    used_answers["service_price_cents"] = True
-
-            if want_parts_price and data["parts_price_cents"] is None:
-                m = FieldExtractor.match_expected_amount(text, answers.parts_price if isinstance(answers, Answers) else answers.get("parts_price"))
-                if m is not None:
-                    data["parts_price_cents"] = m
-                    used_answers["parts_price_cents"] = True
-
-            # Blind fallback for remaining fields
-            if data["claim_no"] is None:
-                b = FieldExtractor.extract_claim_no_blind(text)
-                if b:
-                    data["claim_no"] = b
-            if data["vin"] is None:
-                b = FieldExtractor.extract_vin_blind(text)
-                if b:
-                    data["vin"] = b
-            if data["cnpj"] is None:
-                b = FieldExtractor.extract_cnpj_blind(text)
-                if b:
-                    data["cnpj"] = b
-
-            if want_service_price and data["service_price_cents"] is None:
-                candidates = FieldExtractor.extract_price_candidates_cents(text)
-                if candidates:
-                    data["service_price_cents"] = candidates[0]
-
-            if want_parts_price and data["parts_price_cents"] is None:
-                candidates = FieldExtractor.extract_price_candidates_cents(text)
-                if candidates:
-                    data["parts_price_cents"] = candidates[0]
-
-            # CNPJ2 only makes sense for Serviço context; but harmless to collect here
-            if not data["cnpj2"]:
-                data["cnpj2"] = FieldExtractor.extract_cnpj2_blind(text)
-
-            # Early stop if everything requested is found
-            done = (
-                data["claim_no"] is not None and
-                data["vin"] is not None and
-                data["cnpj"] is not None and
-                (not want_service_price or data["service_price_cents"] is not None) and
-                (not want_parts_price or data["parts_price_cents"] is not None)
-            )
-            if done:
-                break
-
-        return data, used_answers
-
 def _invoice_no_in_text(inv_no: str, text: str) -> bool:
     """
     Checks if the given invoice number (inv_no) appears in the text.
-    Only matches if inv_no is a non-empty string of digits and is found as a whole number in the text.
+    Matches a pattern where the invoice number is possibly preceded by a year (2 or 4 digits) and/or leading zeros.
+    The 'year' and/or zeros do NOT need to be present in inv_no, only in the text.
     """
     if not inv_no or not inv_no.isdigit():
         return False
-    pattern = r"(?<!\d)0*{}(?!\d)".format(re.escape(inv_no.lstrip("0")))
-    print("pattern: ", pattern)
-    # Only keep whitespace and numbers in the text for searching invoice number
+
+    main_digits = re.escape(inv_no.lstrip("0"))
+
+    pattern = rf"(?<!\d)(?:20\d{{2}}|\d{{2}})?0*{main_digits}(?!\d)"
+
     text_to_search = re.sub(r"[^\d\s]", "", text or "")
-    print(text_to_search)
-    # Find all matches of the pattern
-    for match in re.finditer(pattern, text_to_search):
-        print("found inv_no: ", match.group(0))
+    if re.search(pattern, text_to_search):
         return inv_no
     return ""
 
@@ -1252,25 +1158,29 @@ class RegexProcessingStrategy(LinkStrategy):
                             row["collected_CNPJ"] = b
 
                     m_amt = FieldExtractor.match_expected_amount(text, service_price_ans)
-                    if m_amt is not None:
+                    if m_amt:
                         row["collected_service_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
-                        found_service_price_any = True
-                    if not row["collected_service_price"]:
-                        cands = FieldExtractor.extract_price_candidates_cents(text)
-                        if cands and service_price_ans:
-                            clean_target = str(service_price_ans).replace(".", "").replace(",", "")
-                            for candidate in cands:
-                                str_candidate = str(candidate)
-                                formatted = _format_brl_from_cents(candidate)
-                                if clean_target and (clean_target in str_candidate or str_candidate in clean_target):
-                                    row["collected_service_price"] = formatted
-                                    found_service_price_any = True
-                                    break
+                    else:
+                        if _find_expected_value_in_candidates(text, service_price_ans):
+                            row["collected_service_price"] = _format_brl_from_cents(service_price_ans)
+                            used_answers_any = True
+                        else:
+                            cands = FieldExtractor.extract_price_candidates_cents(text)
+                            if cands and service_price_ans:
+                                clean_target = str(service_price_ans).replace(".", "").replace(",", "")
+                                for candidate in cands:
+                                    str_candidate = str(candidate)
+                                    if clean_target and (clean_target in str_candidate or str_candidate in clean_target):
+                                        row["collected_service_price"] =  _format_brl_from_cents(candidate)
+                                        break
+                            elif cands:
+                                row["collected_service_price"] = _format_brl_from_cents(cands[0])
+                            else:
+                                row["collected_service_price"] = "0,0"
 
                     row["collected_CNPJ2"] = FieldExtractor.extract_cnpj2_blind(text)
                     
-                    # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
                     inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
                         (answers.get("remote_file_name") or "")
@@ -1325,22 +1235,26 @@ class RegexProcessingStrategy(LinkStrategy):
                             row["collected_CNPJ"] = b
 
                     m_amt = FieldExtractor.match_expected_amount(text, parts_price_ans)
-                    if m_amt is not None:
+                    if m_amt:
                         row["collected_parts_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
-                        found_parts_price_any = True
-                    if not row["collected_parts_price"]:
-                        cands = FieldExtractor.extract_price_candidates_cents(text)
-                        if cands and parts_price_ans:
-                            clean_target = str(parts_price_ans).replace(".", "").replace(",", "")
-                            for candidate in cands:
-                                str_candidate = str(candidate)
-                                formatted = _format_brl_from_cents(candidate)
-                                if clean_target and (str_candidate in clean_target or clean_target in str_candidate):
-                                    row["collected_parts_price"] = formatted
-                                    found_parts_price_any = True
-                                    break
-
+                    else:
+                        if _find_expected_value_in_candidates(text, parts_price_ans):
+                            row["collected_parts_price"] = _format_brl_from_cents(parts_price_ans)
+                            used_answers_any = True
+                        else:
+                            cands = FieldExtractor.extract_price_candidates_cents(text)
+                            if cands and parts_price_ans:
+                                clean_target = str(parts_price_ans).replace(".", "").replace(",", "")
+                                for candidate in cands:
+                                    if clean_target and (str(candidate) in clean_target or clean_target in str(candidate)):
+                                        row["collected_parts_price"] = _format_brl_from_cents(candidate)
+                                        break
+                            elif cands:
+                                row["collected_parts_price"] = _format_brl_from_cents(cands[0])
+                            else:
+                                row["collected_parts_price"] = "0,0"
+                                
                     # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
                     inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
@@ -1399,26 +1313,6 @@ class RegexProcessingStrategy(LinkStrategy):
                 service_price_ans = answers.get("collected_service_price") if isinstance(answers, dict) else None
                 parts_price_ans = answers.get("collected_parts_price") if isinstance(answers, dict) else None
 
-                if not found_service_price_any:
-                    m_amt = FieldExtractor.match_expected_amount(text, service_price_ans)
-                    if m_amt is not None:
-                        row["collected_service_price"] = _format_brl_from_cents(m_amt)
-                        used_answers_any = True
-                    if not row["collected_service_price"]:
-                        cands = FieldExtractor.extract_price_candidates_cents(text)
-                        if cands:
-                            row["collected_service_price"] = cands[0]
-
-                if not found_parts_price_any:
-                    m_amt = FieldExtractor.match_expected_amount(text, parts_price_ans)
-                    if m_amt is not None:
-                        row["collected_parts_price"] = _format_brl_from_cents(m_amt)
-                        used_answers_any = True
-                    if not row["collected_parts_price"]:
-                        cands = FieldExtractor.extract_price_candidates_cents(text)
-                        if cands:
-                            row["collected_parts_price"] = cands[0]
-
                 inv_log_done = False
 
 
@@ -1469,117 +1363,6 @@ def process_filepaths(
 
     processor = RegexProcessingStrategy(config={}, streaming=False, answers=manual_answers)
     return processor.process_preprocessed_filepaths(pre)
-
-
-def process_repository(
-    root: str | Path,
-    claim_no_answer: Optional[str] = None,
-    vin_answer: Optional[str] = None,
-    service_price_answer: Optional[str] = None,
-    parts_price_answer: Optional[str] = None,
-    cnpj_answer: Optional[str] = None,
-    invoice_no_answer: Optional[str] = None,
-) -> pd.DataFrame:
-    answers = Answers(
-        claim_no=claim_no_answer,
-        vin=vin_answer,
-        service_price=service_price_answer,
-        parts_price=parts_price_answer,
-        cnpj=cnpj_answer,
-        invoice_no=invoice_no_answer,
-    )
-
-    # Collect from Serviços and Peças first
-    servico_data = collect_data_from_servicos(root, answers)
-    pecas_data = collect_data_from_pecas(root, answers)
-
-    # Merge results preferring explicit values; prices come from specific classes
-    claim_no = servico_data.get("claim_no") or pecas_data.get("claim_no") or ""
-    vin = servico_data.get("vin") or pecas_data.get("vin") or ""
-    cnpj = servico_data.get("cnpj") or pecas_data.get("cnpj") or ""
-    service_price = servico_data.get("service_price") or ""
-    parts_price = pecas_data.get("parts_price") or ""
-
-    # Fallback via Outros if prices are missing
-    outros_data = collect_data_from_outros(root, answers, existing_service_price=service_price, existing_parts_price=parts_price)
-    service_price = service_price or outros_data.get("service_price") or ""
-    parts_price = parts_price or outros_data.get("parts_price") or ""
-
-    # Overall search mode: if any used answers, mark as answers else blind
-    mode_candidates = [servico_data.get("search_mode"), pecas_data.get("search_mode"), outros_data.get("search_mode")]
-    search_mode = "answers" if any(m == "answers" for m in mode_candidates) else "blind"
-
-    df = pd.DataFrame([
-        {
-            "collected_service_price": service_price,
-            "collected_parts_price": parts_price,
-            "collected_CNPJ": cnpj or "",
-            "collected_VIN": vin or "",
-            "collected_ClaimNO": claim_no or "",
-            "collected_CNPJ2": servico_data.get("cnpj2", ""),
-            "search_mode": search_mode,
-        }
-    ])
-    return df
-
-
-def collect_data_from_pecas(root: str | Path, answers: Answers) -> dict[str, Any]:
-    root_path = Path(root).expanduser().resolve()
-    pecas_df = categorize_pdfs(root_path)
-    pecas_mask = pecas_df["class"] == "Peças"
-    pecas_files = [Path(r["file"]) for _, r in pecas_df[pecas_mask].iterrows()]
-    data, used = _collect_from_files(pecas_files, answers, want_service_price=False, want_parts_price=True)
-    search_mode = "answers" if any(used.values()) else "blind"
-    return {
-        "claim_no": data["claim_no"],
-        "vin": data["vin"],
-        "cnpj": data["cnpj"],
-        "parts_price": _format_brl_from_cents(data["parts_price_cents"]),
-        "search_mode": search_mode,
-    }
-
-
-def collect_data_from_servicos(root: str | Path, answers: Answers) -> dict[str, Any]:
-    root_path = Path(root).expanduser().resolve()
-    # Avoid using column names with non-identifier characters in .query()
-    servicos_df = categorize_pdfs(root_path)
-    servicos_mask = servicos_df["class"] == "Serviço"
-    servico_files = [Path(r["file"]) for _, r in servicos_df[servicos_mask].iterrows()]
-    data, used = _collect_from_files(servico_files, answers, want_service_price=True, want_parts_price=False)
-    search_mode = "answers" if any(used.values()) else "blind"
-    return {
-        "claim_no": data["claim_no"],
-        "vin": data["vin"],
-        "cnpj": data["cnpj"],
-        "service_price": _format_brl_from_cents(data["service_price_cents"]),
-        "cnpj2": data["cnpj2"],
-        "search_mode": search_mode,
-    }
-
-
-def collect_data_from_outros(
-    root: str | Path,
-    answers: Answers,
-    existing_service_price: Optional[str],
-    existing_parts_price: Optional[str],
-) -> dict[str, Any]:
-    root_path = Path(root).expanduser().resolve()
-    outros_df = categorize_pdfs(root_path)
-    outros_files = [Path(r["file"]) for _, r in outros_df[outros_df["class"] == "Outros"].iterrows()]
-
-    # We only search for missing prices here, as a fallback
-    want_service = not existing_service_price
-    want_parts = not existing_parts_price
-    if not want_service and not want_parts:
-        return {"service_price": existing_service_price or "", "parts_price": existing_parts_price or "", "search_mode": ""}
-
-    data, used = _collect_from_files(outros_files, answers, want_service_price=want_service, want_parts_price=want_parts)
-    search_mode = "answers" if any(used.values()) else "blind"
-    return {
-        "service_price": existing_service_price or _format_brl_from_cents(data["service_price_cents"]) or "",
-        "parts_price": existing_parts_price or _format_brl_from_cents(data["parts_price_cents"]) or "",
-        "search_mode": search_mode,
-    }
 
 
 __all__ = [
