@@ -845,7 +845,7 @@ def _invoice_no_in_text(inv_no: str, text: str) -> bool:
     Checks if the given invoice number (inv_no) appears in the text.
     Only matches if inv_no is a non-empty string of digits and is found as a whole number in the text.
     """
-    distance = 12
+    distance = 1
     if not inv_no or not inv_no.isdigit():
         return False
     # Look for inv_no as a whole number (not part of a larger number)
