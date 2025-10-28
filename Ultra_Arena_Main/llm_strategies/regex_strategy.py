@@ -316,7 +316,6 @@ class PdfTextExtractor:
                         True, True,
                     )
                     ocr_text, convert_time, ocr_time, total_time = ocr_extract_pdf_text_with_poppler_tesseract(file_path)
-                    print(ocr_text)
                     logging.info(
                         "[ocr.pdf] ocr_done convert_time=%.3fs ocr_time=%.3fs total_time=%.3fs ocr_len=%d",
                         convert_time, ocr_time, total_time, len(ocr_text or ""),
@@ -898,21 +897,18 @@ class RegexPreProcessingStrategy(LinkStrategy):
         file_classes: dict[Path, str] = {}
         for f in files:
             try:
-                # FORCE BLACKLISTING FOR TESTING: Always fail text extraction
                 t = PdfTextExtractor.extract_text_best_effort(f)
-                # raise Exception("FORCED BLACKLISTING: Simulating text extraction failure")
-                print(f"Text extraction: {t}")
                 # Check if text extraction failed or returned empty/invalid text
-                if not t or len(t.strip()) < 10:  # Consider text too short to be useful
+                if not t or len(t) < 10:  # Consider text too short to be useful
                     self.blacklist_file(str(f), "Text extraction failed or returned insufficient content", "regex_preprocessing")
-                    logging.warning(f"🚫 Blacklisting {f} due to poor text extraction quality")
+                    logging.info(f"🚫 Blacklisting {f} due to poor text extraction quality")
                     continue
                 file_texts[f] = t
                 file_classes[f] = PdfClassifier.classify_pdf(t)
             except Exception as e:
                 # Text extraction threw an exception - blacklist the file
                 self.blacklist_file(str(f), f"Text extraction error: {str(e)}", "regex_preprocessing")
-                logging.error(f"🚫 Blacklisting {f} due to text extraction exception: {e}")
+                logging.info(f"🚫 Blacklisting {f} due to text extraction exception: {e}")
                 continue
 
         return PreprocessedData(
@@ -1104,6 +1100,7 @@ class RegexProcessingStrategy(LinkStrategy):
                             try:
                                 t = file_texts.get(f, "") if isinstance(file_texts, dict) else ""
                                 if not t:
+                                    print(f"Blacklisting {f} due to empty text in pre_results file_texts")
                                     self.blacklist_file(str(f), "Empty text in pre_results file_texts", "regex_preprocessing")
                             except Exception:
                                 continue
