@@ -845,22 +845,16 @@ def _invoice_no_in_text(inv_no: str, text: str) -> bool:
     Checks if the given invoice number (inv_no) appears in the text.
     Only matches if inv_no is a non-empty string of digits and is found as a whole number in the text.
     """
-    distance = 1
     if not inv_no or not inv_no.isdigit():
         return False
-    # Look for inv_no as a whole number (not part of a larger number)
-    # Match when inv_no is not preceded or followed by a digit (handles " aaaa1234 ", rejects "12341234")
-    pattern = r"(?<!\d){}(?!\d)".format(re.escape(inv_no))
+    pattern = r"(?<!\d)0*{}(?!\d)".format(re.escape(inv_no.lstrip("0")))
+    print("pattern: ", pattern)
     # Only keep whitespace and numbers in the text for searching invoice number
     text_to_search = re.sub(r"[^\d\s]", "", text or "")
+    print(text_to_search)
     # Find all matches of the pattern
     for match in re.finditer(pattern, text_to_search):
-        start, end = match.start(), match.end()
-        # Check for "RPS" within 20 characters before or after the match
-        before = text_to_search[max(0, start-distance):start]
-        after = text_to_search[end:end+distance]
-        if re.search(r"RPS", before, re.IGNORECASE) or re.search(r"RPS", after, re.IGNORECASE):
-            continue  # Skip this match if "RPS" is nearby
+        print("found inv_no: ", match.group(0))
         return inv_no
     return ""
 
@@ -1261,6 +1255,7 @@ class RegexProcessingStrategy(LinkStrategy):
                     if m_amt is not None:
                         row["collected_service_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
+                        found_service_price_any = True
                     if not row["collected_service_price"]:
                         cands = FieldExtractor.extract_price_candidates_cents(text)
                         if cands and service_price_ans:
@@ -1268,14 +1263,12 @@ class RegexProcessingStrategy(LinkStrategy):
                             for candidate in cands:
                                 str_candidate = str(candidate)
                                 formatted = _format_brl_from_cents(candidate)
-                                if clean_target and str_candidate in clean_target:
+                                if clean_target and (clean_target in str_candidate or str_candidate in clean_target):
                                     row["collected_service_price"] = formatted
+                                    found_service_price_any = True
                                     break
 
                     row["collected_CNPJ2"] = FieldExtractor.extract_cnpj2_blind(text)
-                    
-                    if row["collected_service_price"]:
-                        found_service_price_any = True
                     
                     # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
@@ -1335,6 +1328,7 @@ class RegexProcessingStrategy(LinkStrategy):
                     if m_amt is not None:
                         row["collected_parts_price"] = _format_brl_from_cents(m_amt)
                         used_answers_any = True
+                        found_parts_price_any = True
                     if not row["collected_parts_price"]:
                         cands = FieldExtractor.extract_price_candidates_cents(text)
                         if cands and parts_price_ans:
@@ -1342,12 +1336,10 @@ class RegexProcessingStrategy(LinkStrategy):
                             for candidate in cands:
                                 str_candidate = str(candidate)
                                 formatted = _format_brl_from_cents(candidate)
-                                if clean_target and str_candidate in clean_target:
+                                if clean_target and (str_candidate in clean_target or clean_target in str_candidate):
                                     row["collected_parts_price"] = formatted
+                                    found_parts_price_any = True
                                     break
-
-                    if row["collected_parts_price"]:
-                        found_parts_price_any = True
 
                     # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
@@ -1384,6 +1376,7 @@ class RegexProcessingStrategy(LinkStrategy):
 
                 if file_classes != "Outros":
                     continue
+                
                 text = file_texts
                 row = temp_rows.get(f)
                 if row is None:
@@ -1403,8 +1396,8 @@ class RegexProcessingStrategy(LinkStrategy):
 
                 used_answers_any = False
 
-                service_price_ans = answers.get("service_price") if isinstance(answers, dict) else None
-                parts_price_ans = answers.get("parts_price") if isinstance(answers, dict) else None
+                service_price_ans = answers.get("collected_service_price") if isinstance(answers, dict) else None
+                parts_price_ans = answers.get("collected_parts_price") if isinstance(answers, dict) else None
 
                 if not found_service_price_any:
                     m_amt = FieldExtractor.match_expected_amount(text, service_price_ans)
@@ -1414,7 +1407,7 @@ class RegexProcessingStrategy(LinkStrategy):
                     if not row["collected_service_price"]:
                         cands = FieldExtractor.extract_price_candidates_cents(text)
                         if cands:
-                            row["collected_service_price"] = "0,0"
+                            row["collected_service_price"] = cands[0]
 
                 if not found_parts_price_any:
                     m_amt = FieldExtractor.match_expected_amount(text, parts_price_ans)
@@ -1424,7 +1417,7 @@ class RegexProcessingStrategy(LinkStrategy):
                     if not row["collected_parts_price"]:
                         cands = FieldExtractor.extract_price_candidates_cents(text)
                         if cands:
-                            row["collected_parts_price"] = "0,0"
+                            row["collected_parts_price"] = cands[0]
 
                 inv_log_done = False
 
