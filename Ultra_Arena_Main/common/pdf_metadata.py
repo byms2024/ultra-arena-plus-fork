@@ -70,20 +70,21 @@ def read_pdf_metadata_dict(pdf_path: str) -> Dict[str, Any]:
         if not remote_file_name:
             remote_file_name = ""
         document_info["remote_file_name"] = remote_file_name
-        dms_data["invoice_no"] = remote_file_name
-        matches = re.findall(r"\d{2,}", remote_file_name or "")
+        dms_data["remote_file_name"] = remote_file_name
+        dms_data["invoice_no_dms"] = remote_file_name
+        matches = re.findall(r"\d{1,}", remote_file_name or "")
         if matches:
             invoice_candidate = matches[-1]  # Use the last match in the filename
             try:
                 val = int(invoice_candidate)
-                if "invoice_no" not in dms_data or not dms_data.get("invoice_no"):
-                    dms_data["invoice_no"] = str(val)
+                if "invoice_no_dms" not in dms_data or not dms_data.get("invoice_no_dms"):
+                    dms_data["invoice_no_dms"] = str(val)
             except Exception:
-                dms_data["invoice_no"] = invoice_candidate
+                dms_data["invoice_no_dms"] = invoice_candidate
                 pass
     except Exception:
         logging.error(f"Error deriving invoice number from file name: {e}")
-        dms_data["invoice_no"] = None
+        dms_data["invoice_no_dms"] = None
         pass
 
     return {"document_info": document_info, "dms_data": dms_data}

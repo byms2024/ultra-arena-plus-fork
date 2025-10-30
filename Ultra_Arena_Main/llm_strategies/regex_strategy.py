@@ -93,6 +93,12 @@ NFE_REGEXES: list[re.Pattern[str]] = [
     re.compile(r"\bNFe\b", re.IGNORECASE),
 ]
 
+RPS_REGEXES: list[re.Pattern[str]] = [
+    # re.compile(r"recibo[\s\W_]*provis[oó]rio[\s\W_]*de[\s\W_]*servi[cç]os", re.IGNORECASE),
+    re.compile(r"n[aã][oõ][\s\W_]*[eé][\s\W_]*v[aá]lido[\s\W_]*como[\s\W_]*documento[\s\W_]*fiscal", re.IGNORECASE),
+    re.compile(r"no[\s\W_]*prazo[\s\W_]*de[\s\W_]*at[eé][\s\W_]*10[\s\W_]*(\([\s\W_]*dez[\s\W_]*\))?[\s\W_]*dias[\s\W_]*corridos", re.IGNORECASE),
+]
+
 CLAIM_NO_REGEX: re.Pattern[str] = re.compile(
     r"(?P<prefix>BY)?DAMEBR(?P<body>[A-Z0-9]{8,30}_[0-9A-Z]{2})",
     re.IGNORECASE,
@@ -497,23 +503,22 @@ class PdfClassifier:
     @staticmethod
     def is_servico(text: str) -> bool:
         # Exclude if any "pecas" pattern matches (excludent)
-        has_pecas = False
-        has_servico = False
-        for p in NFE_REGEXES:
+        for p in RPS_REGEXES:
             if p.search(text or ""):
-                has_pecas = True
-                break
+                return False
         for p in NFS_E_REGEXES:
             if p.search(text or ""):
-                has_servico = True
-                break
-        return has_servico
+                return True
+
 
     @staticmethod
     def is_pecas(text: str) -> bool:
         # Exclude if any "servico" pattern matches (excludent)
         has_pecas = False
         has_servico = False
+        for p in RPS_REGEXES:
+            if p.search(text or ""):
+                return False
         for p in NFS_E_REGEXES:
             if p.search(text or ""):
                 has_servico = True
@@ -861,7 +866,7 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "part_amount_dms": dms.get("part_amount_dms"),
                     "dms_file_id": dms.get("file_id"),
                     "dms_embedded_at": dms.get("embedded_at"),
-                    "invoice_no_dms": dms.get("invoice_no"),
+                    "invoice_no_dms": dms.get("invoice_no_dms"),
                     "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name"),
                 }
                 # Store DMS data in passthrough for visibility in logs
@@ -875,8 +880,8 @@ class RegexPreProcessingStrategy(LinkStrategy):
                     "service_price": mapped.get("labour_amount_dms"),
                     "parts_price": mapped.get("part_amount_dms"),
                     "cnpj": mapped.get("cnpj1"),
-                    "invoice_no": mapped.get("invoice_no_dms"),
                     "remote_file_name": mapped.get("remote_file_name"),
+                    "invoice_no_dms": mapped.get("invoice_no_dms"),
                 }
 
             # Optionally keep raw document info
@@ -1199,7 +1204,7 @@ class RegexProcessingStrategy(LinkStrategy):
                     
                     inv_log_done = False
                     inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
-                        (answers.get("remote_file_name") or "")
+                        (answers.get("remote_file_name") or answers.get("invoice_no_dms") or "")
                     )
                     inv_no = _invoice_no_in_text(inv_no_target, text) if inv_no_target else None
                     if inv_no:
@@ -1274,7 +1279,7 @@ class RegexProcessingStrategy(LinkStrategy):
                     # fallback to filename-derived invoice number when present in metadata read
                     inv_log_done = False
                     inv_no_target = FieldExtractor.extract_invoice_no_from_filename(
-                        (answers.get("remote_file_name") or "")
+                        (answers.get("remote_file_name") or answers.get("invoice_no_dms") or "")
                     )
                     inv_no = _invoice_no_in_text(inv_no_target, text) if inv_no_target else None
                     if inv_no:
