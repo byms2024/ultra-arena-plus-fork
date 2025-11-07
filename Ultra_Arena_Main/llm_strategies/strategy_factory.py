@@ -346,6 +346,8 @@ class TextPreProcessingStrategy(LinkStrategy):
                         "part_amount_dms": dms.get("part_amount_dms"),
                         "dms_file_id": dms.get("file_id"),
                         "dms_embedded_at": dms.get("embedded_at"),
+                        "invoice_no": dms.get("invoice_no"),
+                        "remote_file_name": (meta.get("document_info", {}) or {}).get("remote_file_name"),
                     }
                     self.update_extracted_data(file_path, {k: v for k, v in mapped.items() if v is not None})
                 # Optionally keep raw document info
@@ -620,11 +622,8 @@ class MetadataPostProcessingStrategy(LinkStrategy):
                             proc_val = str(proc_fields.get("service_value")).strip().replace(",", "").replace(".", "")
                             if proc_fields.get("service_value") is None or dms_val not in proc_val:
                                 issues.append("labour_amount_dms")
-                        if dms.get("invoice_no") is not None:
-                            dms_inv_no = str(dms.get("invoice_no")).strip()
-                            proc_inv_no = str(proc_fields.get("invoice_no")).strip() if proc_fields.get("invoice_number") is not None else None
-                            if proc_inv_no is None or dms_inv_no != proc_inv_no:
-                                issues.append("invoice_no")
+                        if proc_fields.get("invoice_no") is None or "":
+                            issues.append("invoice_no")
 
                         if issues and proc_fields.get("type") != "Outros":
                             # Unmatched: record details but don't modify extracted_data

@@ -10,6 +10,7 @@ from collections import Counter
 import re
 import json
 import inspect
+import os
 
 # from common.text_extractor import TextExtractor
 
@@ -140,19 +141,33 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     summary.append({"error": "summary_failed_unknown_entry"})
         return summary
 
-    def _log_passthrough(self, where: str, passthrough: Dict[str, Any], file: Optional[str] = None) -> None:
+    def _log_passthrough(self, where: str, passthrough: Dict[str, Any], files: Optional[List[str]] = None) -> None:
+        """
+        Logs a summary of the passthrough object.
+
+        Args:
+            where: A string indicating the context/location of the log.
+            passthrough: The passthrough data dictionary.
+            file: If specified, only the summaries for file names in this list will be logged.
+        """
         try:
+            files = [os.path.basename(f) for f in files]
+
             full_snapshot = self._make_passthrough_summary(passthrough)
-            if file:
-                # If a file is specified, filter the full snapshot.
-                snapshot_to_log = [entry for entry in full_snapshot if file in entry.get("file") ]
-                log_message = f"🔎 Passthrough snapshot for file '{file}' [{where}]"
+
+            # Check if a non-empty list of files was provided
+            if files:
+                # Filter to include entries whose filename is in the 'file' list
+                snapshot_to_log = [
+                    entry for entry in full_snapshot 
+                    if (os.path.basename(entry.get("file")) in files)
+                ]
+                log_message = f"🔎 Passthrough snapshot for remaining {len(files)} files: [{where}]"
             else:
-                # Otherwise, use the full snapshot.
+                # Otherwise, use the full snapshot
                 snapshot_to_log = full_snapshot
                 log_message = f"🔎 Passthrough snapshot [{where}]"
 
-            # Step 3: Log the result with the appropriate message.
             logging.info(f"{log_message}: {json.dumps(snapshot_to_log, ensure_ascii=False, indent=2, sort_keys=True)}")
 
         except Exception as e:
@@ -310,6 +325,39 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 logging.debug(f"📊 Updated status for {file_path}: {status}")
                 break
 
+    def _merge_non_empty(self, original: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge updates into original, overwriting only with non-empty values.
+
+        Rules:
+        - Scalars: overwrite if value is not None and (if string) not empty after strip
+        - Dicts: recurse
+        - Lists: overwrite only if list is non-empty
+        """
+        try:
+            if not isinstance(original, dict) or not isinstance(updates, dict):
+                # For non-dicts, prefer updates if non-empty; else keep original
+                if isinstance(updates, str):
+                    return updates if updates.strip() != "" else original
+                return updates if updates is not None else original
+            merged: Dict[str, Any] = dict(original)
+            for key, value in updates.items():
+                if isinstance(value, dict):
+                    merged[key] = self._merge_non_empty(original.get(key, {}), value)
+                elif isinstance(value, list):
+                    if value is not None and len(value) > 0:
+                        merged[key] = value
+                else:
+                    if isinstance(value, str):
+                        if value.strip() != "":
+                            merged[key] = value
+                    else:
+                        if value is not None:
+                            merged[key] = value
+            return merged
+        except Exception:
+            # If anything goes wrong, fall back to updates-as-is
+            return updates if updates is not None and (not isinstance(updates, str) or updates.strip() != "") else original
+
     def _execute_subchain(self, subchain_name: str, subchain_config: Dict[str, Any], 
                          file_group: List[str], config_manager, group_index: int, group_id: str,
                          system_prompt: Optional[str], user_prompt: str, agg_stats: Dict[str, Any],
@@ -321,6 +369,9 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
         """
         
         current_files = file_group
+        logging.info(f'⭕⭕ Subchain Processing Files ⭕⭕')
+        logging.info(current_files)
+
         subchain_results = {}
         
         # Extract common subchain-level attributes as variables
@@ -377,7 +428,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             "answers": answers,
                         }
                     }
-            self._log_passthrough(f"after_pre:{subchain_name}", passthrough)
+            #self._log_passthrough(f"after_pre:{subchain_name}", passthrough)
                 
         except Exception as e:
             logging.error(f"❌ Pre-processing failed for subchain '{subchain_name}': {e}")
@@ -413,7 +464,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             if callable(_attach):
                 _attach(passthrough)
             
-            self._log_passthrough(f"before_processing:{subchain_name}", passthrough)
+            self._log_passthrough(f"before_processing:{subchain_name}", passthrough, current_files)
+
             extra_kwargs: Dict[str, Any] = {}
             try:
                 sig = inspect.signature(processing_strategy.process_file_group)  # type: ignore[attr-defined]
@@ -537,7 +589,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                             short_name = Path(file_path).name
                         except Exception:
                             short_name = str(file_path)
-                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough,str(file_path))
+                        self._log_passthrough(f"after_processing_update:{subchain_name}:{short_name}", passthrough,[str(file_path)])
                     except Exception:
                         pass
                 except Exception as e:
@@ -584,8 +636,8 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                     subchain_results[file_path]["processing"] = {"error": f"Processing failed: {e}"}
                     subchain_results[file_path]["error"] = f"Processing failed: {e}"
                 failed_files.append(file_path)
-        finally:
-            self._log_passthrough(f"after_processing:{subchain_name}", passthrough)
+        # finally:
+        #     self._log_passthrough(f"full after_processing:{subchain_name}", passthrough)
         
         # 3. Post-processing link (only for successful files)
         post_config = subchain_config["post-processing"]
@@ -610,7 +662,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 if callable(_attach):
                     _attach(passthrough)
                 
-                self._log_passthrough(f"before_post:{subchain_name}", passthrough)
+                self._log_passthrough(f"before_post:{subchain_name}", passthrough, current_files)
                 post_results, post_stats, _ = post_strategy.process_file_group(
                     config_manager=config_manager,
                     file_group=successful_files,
@@ -630,7 +682,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
                 for file_path, result in post_results:
                     if file_path in subchain_results:
                         subchain_results[file_path]["post_processing"] = result
-                self._log_passthrough(f"after_post:{subchain_name}", passthrough)
+                #self._log_passthrough(f"after_post:{subchain_name}", passthrough)
                         
             except Exception as e:
                 logging.error(f"❌ Post-processing failed for subchain '{subchain_name}': {e}")
@@ -641,7 +693,13 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
 
         for file_path, results in subchain_results.items():
             if "error" not in results:
-                successful_results[file_path] = results
+                # Only overwrite existing fields with non-empty values
+                if file_path in successful_results:
+                    successful_results[file_path] = self._merge_non_empty(
+                        successful_results[file_path], results
+                    )
+                else:
+                    successful_results[file_path] = results
             else:
                 logging.info(f"File '{file_path}' has error: {results.get('error')}")
         
@@ -649,7 +707,7 @@ class ChainedProcessingStrategy(BaseProcessingStrategy):
             logging.info(f"Successful file: {file_path}")
 
         logging.info(f"🔁 Subchain '{subchain_name}' complete: successful={len(successful_results)}, failed={len(failed_files)}")
-        self._log_passthrough(f"end_subchain:{subchain_name}", passthrough)
+        self._log_passthrough(f"end_subchain:{subchain_name}", passthrough, current_files)
         
         return successful_results, failed_files
 

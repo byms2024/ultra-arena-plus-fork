@@ -57,7 +57,7 @@ def main():
                             "part_amount_dms",
                             "labour_amount_dms"
                         ],
-                        "subchain_name": "text_first",
+                        "subchain_name": "text_first_gemini",
                         "fileNumberPerFile": 1,
                         "pre-processing": {
                             "pre-type": "text",
