@@ -216,6 +216,11 @@ class RequestProcessor:
             # Build chain config by merging defaults with chain steps
             base_chain_config = get_config_for_strategy(ua_config_base.STRATEGY_CHAIN, streaming=config["streaming"])            
             chain_cfg = {**base_chain_config, **chain_definitions[chain_name]}
+            
+            # If chain_config is provided in the request, merge it in (takes precedence)
+            request_chain_config = config.get("chain_config")
+            if request_chain_config:
+                chain_cfg = {**chain_cfg, "chain_config": request_chain_config}
 
             # Create processor for chain
             processor = ModularParallelProcessor(

@@ -54,11 +54,15 @@ class AsyncTestRunner:
         self.test_fixtures_dir = self.script_dir / "test_fixtures" / "br_fixture"
         self.input_pdf_dir_path = self.test_fixtures_dir / "input_files" / config.file_name
 
-        if not config.combo_name and not config.chain_config:
-            print(f"❌ Error: Choose either CHAIN or COMBO")
-            return False
+        # Validate that either combo_name or (chain_name or chain_config) is provided
+        has_combo = config.combo_name is not None
+        has_chain_name = config.chain_name is not None
+        has_chain_config = config.chain_config and len(config.chain_config) > 0
         
-        elif config.combo_name is not None:
+        if not has_combo and not has_chain_name and not has_chain_config:
+            raise ValueError("Choose either CHAIN (chain_name or chain_config) or COMBO (combo_name)")
+        
+        if config.combo_name is not None:
             self.api_endpoint = f"{config.base_url}/api/process/combo/async"
         else:
             self.api_endpoint = f"{config.base_url}/api/process/chain"
